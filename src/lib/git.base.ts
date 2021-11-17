@@ -1,15 +1,16 @@
-import {Inject} from 'typescript-ioc';
+import {Container} from 'typescript-ioc';
 
 import {GitApi, GitEvent, GitHeader, WebhookParams} from './git.api';
-import {TypedGitRepoConfig, GitHost} from './git.model';
+import {GitHost, TypedGitRepoConfig} from './git.model';
 import {Logger} from '../util/logger';
 
 export abstract class GitBase extends GitApi {
-  @Inject
   logger: Logger;
 
   protected constructor(public config: TypedGitRepoConfig) {
     super();
+
+    this.logger = Container.get(Logger);
   }
 
   getType(): GitHost {
