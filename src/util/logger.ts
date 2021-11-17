@@ -1,4 +1,3 @@
-import {default as ora, Ora} from 'ora';
 import {Container, ObjectFactory} from 'typescript-ioc';
 
 export abstract class Logger {
@@ -13,51 +12,7 @@ export abstract class Logger {
 
 export const logFactory: (config: {verbose?: boolean, spinner?: boolean}) => ObjectFactory = ({verbose = process.env.VERBOSE_LOGGING === 'true', spinner = process.env.LOGGING_SPINNER === 'false'}: {verbose?: boolean, spinner?: boolean}): ObjectFactory => {
   return () => {
-    if (!verbose && spinner) {
-      return new OraLogger(ora().start())
-    } else {
-      return new VerboseLogger()
-    }
-  }
-}
-
-export const oraLoggerFactory: (ora: Ora) => ObjectFactory = (ora: Ora): ObjectFactory => {
-  return () => new OraLogger(ora);
-}
-
-class OraLogger implements Logger {
-  constructor(private ora: Ora) {}
-
-  get info() {
-    return 'ora logger';
-  }
-
-  set text(text: string) {
-    this.log(text);
-  }
-
-  log(message: string, context?: any): void {
-    if (this.ora.isSpinning) {
-      this.ora.text = message;
-    } else {
-      console.log(message);
-    }
-  }
-
-  logn(message: string, context?: any): void {
-    if (!this.ora.isSpinning) {
-      process.stdout.write(message);
-    }
-  }
-
-  debug(message: string, context?: any): void {
-  }
-
-  error(message: string, context?: any): void {
-  }
-
-  stop() {
-    this.ora.stop();
+    return new VerboseLogger();
   }
 }
 
