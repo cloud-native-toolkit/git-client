@@ -7,6 +7,11 @@ export enum GitHost {
   bitbucket = 'Bitbucket',
 }
 
+export interface GitLocalRepoConfig {
+  repoDir: string;
+  baseDir?: string;
+}
+
 export interface GitRepoConfig {
   protocol: string;
   url: string;
