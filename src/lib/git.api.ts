@@ -87,6 +87,12 @@ export interface LocalGitConfig {
   baseDir?: string;
   config?: object;
   binary?: string;
+  userConfig?: GitUserConfig;
+}
+
+export interface GitUserConfig {
+  email: string;
+  name: string;
 }
 
 export abstract class LocalGitApi {

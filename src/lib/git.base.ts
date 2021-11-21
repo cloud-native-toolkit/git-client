@@ -17,11 +17,11 @@ export abstract class GitBase extends GitApi {
   async clone(repoDir: string, input: LocalGitConfig): Promise<SimpleGit & {gitApi: GitApi}> {
     const gitOptions: Partial<SimpleGitOptions> = Object
       .keys(input)
-      .reduce((result: Partial<SimpleGitOptions>, currentKey: string) => {
+      .reduce((result: Partial<SimpleGitOptions>, currentKey: keyof LocalGitConfig) => {
 
         if (currentKey === 'config') {
           result.config = Object.keys(input.config).map(key => `${key}=${input.config[key]}`);
-        } else {
+        } else if (currentKey !== 'userConfig') {
           result[currentKey] = input[currentKey];
         }
 
@@ -34,6 +34,11 @@ export abstract class GitBase extends GitApi {
     await git.clone(`https://${this.credentials()}@${this.config.repo}`, repoDir);
 
     await git.cwd({path: repoDir, root: true});
+
+    if (input.userConfig) {
+      await git.addConfig('user.email', input.userConfig.email, true, 'local');
+      await git.addConfig('user.name', input.userConfig.name, true, 'local');
+    }
 
     git.gitApi = this;
 
