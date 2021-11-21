@@ -1,3 +1,5 @@
+import {SimpleGit, SimpleGitOptions} from 'simple-git';
+
 import {GitHost} from './git.model';
 
 export class CreateWebhook {
@@ -81,6 +83,12 @@ export interface PullRequest {
   pullNumber: number;
 }
 
+export interface LocalGitConfig {
+  baseDir?: string;
+  config?: object;
+  binary?: string;
+}
+
 export abstract class LocalGitApi {
   abstract listFiles(): Promise<Array<{path: string, url?: string}>>;
 
@@ -101,4 +109,6 @@ export abstract class GitApi extends LocalGitApi {
   abstract mergePullRequest(options: MergePullRequestOptions): Promise<string>;
 
   abstract updatePullRequestBranch(pullNumber: number): Promise<string>;
+
+  abstract clone(repoDir: string, config: LocalGitConfig): Promise<SimpleGit & {gitApi: GitApi}>;
 }
