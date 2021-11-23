@@ -1,9 +1,18 @@
 import {Container} from 'typescript-ioc';
 
-import {LocalGitConfig, GitApi, GitEvent, GitHeader, WebhookParams} from './git.api';
+import {
+  LocalGitConfig,
+  GitApi,
+  GitEvent,
+  GitHeader,
+  WebhookParams,
+  CreatePullRequestOptions,
+  PullRequest, MergePullRequestOptions, UpdateAndMergePullRequestOptions
+} from './git.api';
 import {GitHost, TypedGitRepoConfig} from './git.model';
 import {Logger} from '../util/logger';
 import simpleGit, {SimpleGit, SimpleGitOptions} from 'simple-git';
+import {timer} from './timer';
 
 export abstract class GitBase extends GitApi {
   logger: Logger;
@@ -32,6 +41,29 @@ export abstract class GitBase extends GitApi {
     git.gitApi = this;
 
     return git as (SimpleGit & {gitApi: GitApi});
+  }
+
+  async updateAndMergePullRequest(options: UpdateAndMergePullRequestOptions): Promise<string> {
+    const retryCount: number = options.retryCount !== undefined ? options.retryCount : 5;
+
+    let count = 0;
+    while (true) {
+      try {
+        await this.updatePullRequestBranch(options.pullNumber);
+
+        return this.mergePullRequest(options);
+      } catch (err) {
+        if (count < retryCount) {
+          count += 1;
+          const timeout = 250 + Math.random() * 500;
+          this.logger.log(`Error merging pull request. Wait ${timeout}ms then retry...`, err.message);
+          await timer(timeout);
+        } else {
+          this.logger.log('Error merging pull request. Retry count exceeded.', err.message);
+          throw err;
+        }
+      }
+    }
   }
 
   private buildGitOptions(input: LocalGitConfig): Partial<SimpleGitOptions> {

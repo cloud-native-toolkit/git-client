@@ -79,6 +79,10 @@ export interface MergePullRequestOptions {
   message?: string;
 }
 
+export interface UpdateAndMergePullRequestOptions extends MergePullRequestOptions {
+  retryCount?: number;
+}
+
 export interface PullRequest {
   pullNumber: number;
 }
@@ -113,6 +117,8 @@ export abstract class GitApi extends LocalGitApi {
   abstract createPullRequest(options: CreatePullRequestOptions): Promise<PullRequest>;
 
   abstract mergePullRequest(options: MergePullRequestOptions): Promise<string>;
+
+  abstract updateAndMergePullRequest(options: UpdateAndMergePullRequestOptions): Promise<string>;
 
   abstract updatePullRequestBranch(pullNumber: number): Promise<string>;
 
