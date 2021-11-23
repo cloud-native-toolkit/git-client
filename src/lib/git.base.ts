@@ -15,23 +15,12 @@ export abstract class GitBase extends GitApi {
   }
 
   async clone(repoDir: string, input: LocalGitConfig): Promise<SimpleGit & {gitApi: GitApi}> {
-    const gitOptions: Partial<SimpleGitOptions> = Object
-      .keys(input)
-      .reduce((result: Partial<SimpleGitOptions>, currentKey: keyof LocalGitConfig) => {
-
-        if (currentKey === 'config') {
-          result.config = Object.keys(input.config).map(key => `${key}=${input.config[key]}`);
-        } else if (currentKey !== 'userConfig') {
-          result[currentKey] = input[currentKey];
-        }
-
-        return result;
-      }, {});
+    const gitOptions: Partial<SimpleGitOptions> = this.buildGitOptions(input);
 
     const git: SimpleGit & {gitApi?: GitApi} = simpleGit(gitOptions);
 
     // clone into repo dir
-    await git.clone(`https://${this.credentials()}@${this.config.repo}`, repoDir);
+    await git.clone(`https://${this.credentials()}@${this.config.host}/${this.config.owner}/${this.config.repo}`, repoDir);
 
     await git.cwd({path: repoDir, root: true});
 
@@ -43,6 +32,21 @@ export abstract class GitBase extends GitApi {
     git.gitApi = this;
 
     return git as (SimpleGit & {gitApi: GitApi});
+  }
+
+  private buildGitOptions(input: LocalGitConfig): Partial<SimpleGitOptions> {
+    return Object
+      .keys(input)
+      .reduce((result: Partial<SimpleGitOptions>, currentKey: keyof LocalGitConfig) => {
+
+        if (currentKey === 'config') {
+          result.config = Object.keys(input.config).map(key => `${key}=${input.config[key]}`);
+        } else if (currentKey !== 'userConfig') {
+          result[currentKey] = input[currentKey];
+        }
+
+        return result;
+      }, {});
   }
 
   credentials(): string {
