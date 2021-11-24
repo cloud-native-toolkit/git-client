@@ -96,6 +96,17 @@ abstract class GithubCommon extends GitBase implements GitApi {
     return treeResponse.default_branch;
   }
 
+  async getPullRequest(pullNumber: number): Promise<PullRequest> {
+
+    const response: Response = await this.get(`/pulls/${pullNumber}`);
+
+    return {
+      pullNumber: response.body.number,
+      sourceBranch: response.body.head.ref,
+      targetBranch: response.body.base.ref,
+    };
+  }
+
   async createPullRequest(options: CreatePullRequestOptions): Promise<PullRequest> {
 
     const response: Response = await this.post('/pulls', {
@@ -106,7 +117,11 @@ abstract class GithubCommon extends GitBase implements GitApi {
       draft: options.draft || false,
     });
 
-    return {pullNumber: response.body.number}
+    return {
+      pullNumber: response.body.number,
+      sourceBranch: options.sourceBranch,
+      targetBranch: options.targetBranch,
+    };
   }
 
   async mergePullRequest(options: MergePullRequestOptions): Promise<string> {

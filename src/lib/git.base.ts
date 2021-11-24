@@ -7,11 +7,11 @@ import {
   GitHeader,
   WebhookParams,
   CreatePullRequestOptions,
-  PullRequest, MergePullRequestOptions, UpdateAndMergePullRequestOptions
+  PullRequest, MergePullRequestOptions, UpdateAndMergePullRequestOptions, GitUserConfig
 } from './git.api';
 import {GitHost, TypedGitRepoConfig} from './git.model';
 import {Logger} from '../util/logger';
-import simpleGit, {SimpleGit, SimpleGitOptions} from 'simple-git';
+import simpleGit, {SimpleGit, SimpleGitOptions, StatusResult} from 'simple-git';
 import {timer} from './timer';
 
 export abstract class GitBase extends GitApi {
@@ -43,6 +43,38 @@ export abstract class GitBase extends GitApi {
     return git as (SimpleGit & {gitApi: GitApi});
   }
 
+  async rebaseBranch(config: {sourceBranch: string, targetBranch: string, resolver: (conflicts: string[]) => Promise<boolean>}, options: {userConfig?: GitUserConfig} = {}): Promise<boolean> {
+
+    const suffix = Math.random().toString(36).replace(/[^a-z0-9]+/g, '').substr(0, 5);
+    const repoDir = `/tmp/repo/rebase-${suffix}`;
+    const resolver = config.resolver || (() => false);
+
+    const git: SimpleGit = await this.clone(repoDir, {userConfig: options.userConfig});
+
+    await git.checkoutBranch(config.sourceBranch, `origin/${config.sourceBranch}`);
+
+    // TODO need to loop through all commits
+    git.rebase([config.targetBranch]);
+
+    const status: StatusResult = await git.status();
+    if (status.staged.length === 0 && status.created.length === 0 && status.deleted.length === 0) {
+      return false;
+    }
+
+    if (status.conflicted.length > 0) {
+      if (!await resolver(status.conflicted)) {
+        throw new Error('Unable to resolve conflicts: ' + status.conflicted);
+      }
+
+      git.add('.');
+    }
+
+    git.rebase(['--continue']);
+    await git.push('origin', config.sourceBranch, ['--force-with-lease']);
+
+    return true;
+  }
+
   async updateAndMergePullRequest(options: UpdateAndMergePullRequestOptions): Promise<string> {
     const retryCount: number = options.retryCount !== undefined ? options.retryCount : 5;
 
@@ -53,6 +85,14 @@ export abstract class GitBase extends GitApi {
 
         return this.mergePullRequest(options);
       } catch (err) {
+        if (err.statusCode === 405 || err.statusCode === 409) {
+          // rebase pull request branch
+          const pr: PullRequest = await this.getPullRequest(options.pullNumber);
+
+          await this.rebaseBranch(Object.assign({}, pr, {resolver: options.resolver}), {userConfig: options.userConfig});
+          continue;
+        }
+
         if (count < retryCount) {
           count += 1;
           const timeout = 250 + Math.random() * 500;

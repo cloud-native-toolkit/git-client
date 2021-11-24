@@ -75,16 +75,20 @@ export interface CreatePullRequestOptions {
 export interface MergePullRequestOptions {
   pullNumber: number;
   method: 'merge' | 'squash' | 'rebase';
+  resolver?: (conflicts: string[]) => Promise<boolean>;
   title?: string;
   message?: string;
 }
 
 export interface UpdateAndMergePullRequestOptions extends MergePullRequestOptions {
   retryCount?: number;
+  userConfig?: GitUserConfig;
 }
 
 export interface PullRequest {
   pullNumber: number;
+  sourceBranch: string;
+  targetBranch: string;
 }
 
 export interface LocalGitConfig {
@@ -113,6 +117,10 @@ export abstract class GitApi extends LocalGitApi {
   abstract createWebhook(request: CreateWebhook): Promise<string>;
 
   abstract buildWebhookParams(eventId: GitEvent): WebhookParams;
+
+  abstract rebaseBranch(config: {sourceBranch: string, targetBranch: string, resolver: (conflicts: string[]) => Promise<boolean>}, options?: {userConfig?: GitUserConfig}): Promise<boolean>;
+
+  abstract getPullRequest(pullNumber: number): Promise<PullRequest>;
 
   abstract createPullRequest(options: CreatePullRequestOptions): Promise<PullRequest>;
 

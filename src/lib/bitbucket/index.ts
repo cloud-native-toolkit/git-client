@@ -66,6 +66,11 @@ export class Bitbucket extends GitBase implements GitApi {
     return `${this.config.protocol}://api.bitbucket.org/2.0/repositories/${this.config.owner}/${this.config.repo}`;
   }
 
+  async getPullRequest(pullNumber: number): Promise<PullRequest> {
+
+    throw new Error('Method not implemented: getPullRequest')
+  }
+
   async createPullRequest(options: CreatePullRequestOptions): Promise<PullRequest> {
 
     throw new Error('Method not implemented: createPullRequest')

@@ -117,6 +117,11 @@ export class Gogs extends GitBase implements GitApi {
     return response.body.sha1;
   }
 
+  async getPullRequest(pullNumber: number): Promise<PullRequest> {
+
+    throw new Error('Method not implemented: getPullRequest')
+  }
+
   async createPullRequest(options: CreatePullRequestOptions): Promise<PullRequest> {
 
     throw new Error('Method not implemented: createPullRequest')
