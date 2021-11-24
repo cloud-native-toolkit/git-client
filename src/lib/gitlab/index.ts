@@ -102,6 +102,11 @@ export class Gitlab extends GitBase implements GitApi {
     return new Buffer(fileResponse.content, fileResponse.encoding);
   }
 
+  async getPullRequest(pullNumber: number): Promise<PullRequest> {
+
+    throw new Error('Method not implemented: getPullRequest')
+  }
+
   async createPullRequest(options: CreatePullRequestOptions): Promise<PullRequest> {
 
     throw new Error('Method not implemented: createPullRequest')
