@@ -72,10 +72,12 @@ export interface CreatePullRequestOptions {
   maintainer_can_modify?: boolean;
 }
 
+export type MergeResolver = (git: SimpleGitWithApi, conflicts: string[]) => Promise<boolean>;
+
 export interface MergePullRequestOptions {
   pullNumber: number;
   method: 'merge' | 'squash' | 'rebase';
-  resolver?: (conflicts: string[]) => Promise<boolean>;
+  resolver?: MergeResolver;
   title?: string;
   message?: string;
 }
@@ -103,6 +105,10 @@ export interface GitUserConfig {
   name: string;
 }
 
+export interface SimpleGitWithApi extends SimpleGit {
+  gitApi: GitApi;
+}
+
 export abstract class LocalGitApi {
   abstract listFiles(): Promise<Array<{path: string, url?: string}>>;
 
@@ -118,7 +124,7 @@ export abstract class GitApi extends LocalGitApi {
 
   abstract buildWebhookParams(eventId: GitEvent): WebhookParams;
 
-  abstract rebaseBranch(config: {sourceBranch: string, targetBranch: string, resolver: (conflicts: string[]) => Promise<boolean>}, options?: {userConfig?: GitUserConfig}): Promise<boolean>;
+  abstract rebaseBranch(config: {sourceBranch: string, targetBranch: string, resolver: MergeResolver}, options?: {userConfig?: GitUserConfig}): Promise<boolean>;
 
   abstract getPullRequest(pullNumber: number): Promise<PullRequest>;
 
@@ -130,5 +136,5 @@ export abstract class GitApi extends LocalGitApi {
 
   abstract updatePullRequestBranch(pullNumber: number): Promise<string>;
 
-  abstract clone(repoDir: string, config: LocalGitConfig): Promise<SimpleGit & {gitApi: GitApi}>;
+  abstract clone(repoDir: string, config: LocalGitConfig): Promise<SimpleGitWithApi>;
 }
