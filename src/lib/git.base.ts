@@ -7,7 +7,7 @@ import {
   GitHeader,
   WebhookParams,
   CreatePullRequestOptions,
-  PullRequest, MergePullRequestOptions, UpdateAndMergePullRequestOptions, GitUserConfig
+  PullRequest, MergePullRequestOptions, UpdateAndMergePullRequestOptions, GitUserConfig, MergeResolver, SimpleGitWithApi
 } from './git.api';
 import {GitHost, TypedGitRepoConfig} from './git.model';
 import {Logger} from '../util/logger';
@@ -23,7 +23,7 @@ export abstract class GitBase extends GitApi {
     this.logger = Container.get(Logger);
   }
 
-  async clone(repoDir: string, input: LocalGitConfig): Promise<SimpleGit & {gitApi: GitApi}> {
+  async clone(repoDir: string, input: LocalGitConfig): Promise<SimpleGitWithApi> {
     const gitOptions: Partial<SimpleGitOptions> = this.buildGitOptions(input);
 
     const git: SimpleGit & {gitApi?: GitApi} = simpleGit(gitOptions);
@@ -40,16 +40,16 @@ export abstract class GitBase extends GitApi {
 
     git.gitApi = this;
 
-    return git as (SimpleGit & {gitApi: GitApi});
+    return git as SimpleGitWithApi;
   }
 
-  async rebaseBranch(config: {sourceBranch: string, targetBranch: string, resolver: (conflicts: string[]) => Promise<boolean>}, options: {userConfig?: GitUserConfig} = {}): Promise<boolean> {
+  async rebaseBranch(config: {sourceBranch: string, targetBranch: string, resolver: MergeResolver}, options: {userConfig?: GitUserConfig} = {}): Promise<boolean> {
 
     const suffix = Math.random().toString(36).replace(/[^a-z0-9]+/g, '').substr(0, 5);
     const repoDir = `/tmp/repo/rebase-${suffix}`;
     const resolver = config.resolver || (() => false);
 
-    const git: SimpleGit = await this.clone(repoDir, {userConfig: options.userConfig});
+    const git: SimpleGitWithApi = await this.clone(repoDir, {userConfig: options.userConfig});
 
     await git.checkoutBranch(config.sourceBranch, `origin/${config.sourceBranch}`);
 
@@ -62,7 +62,7 @@ export abstract class GitBase extends GitApi {
     }
 
     if (status.conflicted.length > 0) {
-      if (!await resolver(status.conflicted)) {
+      if (!await resolver(git, status.conflicted)) {
         throw new Error('Unable to resolve conflicts: ' + status.conflicted);
       }
 
