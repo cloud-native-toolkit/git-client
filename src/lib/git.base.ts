@@ -81,8 +81,14 @@ export abstract class GitBase extends GitApi {
     let count = 0;
     while (true) {
       try {
+        if (options.rateLimit) {
+          await timer(1000);
+        }
         await this.updatePullRequestBranch(options.pullNumber);
 
+        if (options.rateLimit) {
+          await timer(1000);
+        }
         return this.mergePullRequest(options);
       } catch (err) {
         if (err.statusCode === 405 || err.statusCode === 409) {
