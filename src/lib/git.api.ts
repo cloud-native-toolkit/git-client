@@ -85,6 +85,7 @@ export interface MergePullRequestOptions {
 export interface UpdateAndMergePullRequestOptions extends MergePullRequestOptions {
   retryCount?: number;
   userConfig?: GitUserConfig;
+  rateLimit?: boolean;
 }
 
 export interface PullRequest {
