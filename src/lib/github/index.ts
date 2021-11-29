@@ -67,7 +67,7 @@ interface RepoResponse {
 }
 
 abstract class GithubCommon extends GitBase implements GitApi {
-  constructor(config: TypedGitRepoConfig) {
+  protected constructor(config: TypedGitRepoConfig) {
     super(config);
   }
 
@@ -97,7 +97,7 @@ abstract class GithubCommon extends GitBase implements GitApi {
     return treeResponse.default_branch;
   }
 
-  private async exec<T>(f: () => Promise<T>): Promise<T> {
+  private async exec<T>(f: () => Promise<T>, name: string): Promise<T> {
     const rateLimitRegex = /.*secondary rate limit.*/g;
     while (true) {
       try {
@@ -108,9 +108,10 @@ abstract class GithubCommon extends GitBase implements GitApi {
 
           const time = retryAfter * 1000 + (1000 * Math.random());
 
-          this.logger.debug(`Got secondary rate limit error. Waiting ${time}ms before retry.`)
+          this.logger.debug(`${name}: Got secondary rate limit error. Waiting ${time}ms before retry.`)
           await timer(time);
         } else {
+          this.logger.debug(`${name}: Error calling api`, {error: err, isResponseError: isResponseError(err), status: err.status});
           throw err;
         }
       }
@@ -129,7 +130,7 @@ abstract class GithubCommon extends GitBase implements GitApi {
       };
     };
 
-    return this.exec(f);
+    return this.exec(f, 'getPullRequest');
   }
 
   async createPullRequest(options: CreatePullRequestOptions): Promise<PullRequest> {
@@ -150,7 +151,7 @@ abstract class GithubCommon extends GitBase implements GitApi {
       };
     };
 
-    return this.exec(f);
+    return this.exec(f, 'createPullRequest');
   }
 
   async mergePullRequest(options: MergePullRequestOptions): Promise<string> {
@@ -165,7 +166,7 @@ abstract class GithubCommon extends GitBase implements GitApi {
       return response.body.message;
     }
 
-    return this.exec(f);
+    return this.exec(f, 'mergePullRequest');
   }
 
   async updatePullRequestBranch(pullNumber:number): Promise<string> {
@@ -176,7 +177,7 @@ abstract class GithubCommon extends GitBase implements GitApi {
       return response.body.message;
     }
 
-    return this.exec(f);
+    return this.exec(f, 'updatePullRequestBranch');
   }
 
   async createWebhook(options: CreateWebhook): Promise<string> {
