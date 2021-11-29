@@ -1,10 +1,9 @@
 {
   "name": "@cloudnativetoolkit/git-client",
-  "version": "1.4.4",
+  "version": "1.4.5",
   "description": "",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "type": "module",
   "scripts": {
     "prepare": "npm run build",
     "build": "tsc -d",
