@@ -14,6 +14,7 @@ import {
 import {GitHookConfig, GitHookContentType, TypedGitRepoConfig} from '../git.model';
 import {GitBase} from '../git.base';
 import {isResponseError} from '../../util/superagent-support';
+import {timer} from '../timer';
 
 export interface GitHookData {
   name: 'web';
@@ -96,50 +97,86 @@ abstract class GithubCommon extends GitBase implements GitApi {
     return treeResponse.default_branch;
   }
 
+  private async exec<T>(f: () => Promise<T>): Promise<T> {
+    const rateLimitRegex = /.*secondary rate limit.*/g;
+    while (true) {
+      try {
+        return f();
+      } catch (err) {
+        if (isResponseError(err) && err.statusCode === 403 && rateLimitRegex.test(err.message)) {
+          const retryAfter = err.response.headers['Retry-After'] || 30;
+
+          const time = retryAfter * 1000 + (1000 * Math.random());
+
+          this.logger.debug(`Got secondary rate limit error. Waiting ${time}ms before retry.`)
+          await timer(time);
+        } else {
+          throw err;
+        }
+      }
+    }
+  }
+
   async getPullRequest(pullNumber: number): Promise<PullRequest> {
 
-    const response: Response = await this.get(`/pulls/${pullNumber}`);
+    const f = async (): Promise<PullRequest> => {
+      const response: Response = await this.get(`/pulls/${pullNumber}`);
 
-    return {
-      pullNumber: response.body.number,
-      sourceBranch: response.body.head.ref,
-      targetBranch: response.body.base.ref,
+      return {
+        pullNumber: response.body.number,
+        sourceBranch: response.body.head.ref,
+        targetBranch: response.body.base.ref,
+      };
     };
+
+    return this.exec(f);
   }
 
   async createPullRequest(options: CreatePullRequestOptions): Promise<PullRequest> {
 
-    const response: Response = await this.post('/pulls', {
-      title: options.title,
-      head: options.sourceBranch,
-      base: options.targetBranch,
-      maintainer_can_modify: options.maintainer_can_modify,
-      draft: options.draft || false,
-    });
+    const f = async (): Promise<PullRequest> => {
+      const response: Response = await this.post('/pulls', {
+        title: options.title,
+        head: options.sourceBranch,
+        base: options.targetBranch,
+        maintainer_can_modify: options.maintainer_can_modify,
+        draft: options.draft || false,
+      });
 
-    return {
-      pullNumber: response.body.number,
-      sourceBranch: options.sourceBranch,
-      targetBranch: options.targetBranch,
+      return {
+        pullNumber: response.body.number,
+        sourceBranch: options.sourceBranch,
+        targetBranch: options.targetBranch,
+      };
     };
+
+    return this.exec(f);
   }
 
   async mergePullRequest(options: MergePullRequestOptions): Promise<string> {
 
-    const response: Response = await this.put(`/pulls/${options.pullNumber}/merge`, {
-      commit_title: options.title,
-      commit_message: options.message,
-      merge_method: options.method,
-    });
+    const f = async (): Promise<string> => {
+      const response: Response = await this.put(`/pulls/${options.pullNumber}/merge`, {
+        commit_title: options.title,
+        commit_message: options.message,
+        merge_method: options.method,
+      });
 
-    return response.body.message;
+      return response.body.message;
+    }
+
+    return this.exec(f);
   }
 
   async updatePullRequestBranch(pullNumber:number): Promise<string> {
 
-    const response: Response = await this.put(`/pulls/${pullNumber}/update-branch`);
+    const f = async (): Promise<string> => {
+      const response: Response = await this.put(`/pulls/${pullNumber}/update-branch`);
 
-    return response.body.message;
+      return response.body.message;
+    }
+
+    return this.exec(f);
   }
 
   async createWebhook(options: CreateWebhook): Promise<string> {
