@@ -5,6 +5,7 @@ export interface ResponseError extends Error {
     req: object;
     header: object;
     status: number;
+    statusCode: number;
     text: string;
   }
 }

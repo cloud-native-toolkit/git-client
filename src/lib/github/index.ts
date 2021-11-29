@@ -103,8 +103,8 @@ abstract class GithubCommon extends GitBase implements GitApi {
       try {
         return f();
       } catch (err) {
-        if (isResponseError(err) && err.statusCode === 403 && rateLimitRegex.test(err.message)) {
-          const retryAfter = err.response.headers['Retry-After'] || 30;
+        if (isResponseError(err) && err.status === 403 && rateLimitRegex.test(err.message)) {
+          const retryAfter = err.response.header['Retry-After'] || 30;
 
           const time = retryAfter * 1000 + (1000 * Math.random());
 
