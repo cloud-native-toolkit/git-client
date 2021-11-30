@@ -103,15 +103,15 @@ abstract class GithubCommon extends GitBase implements GitApi {
       try {
         return await f();
       } catch (err) {
-        if (isResponseError(err) && err.status === 403 && rateLimitRegex.test(err.response.body?.message)) {
+        if (isResponseError(err) && err.status === 403 && rateLimitRegex.test(err.response.text)) {
           const retryAfter = err.response.header['Retry-After'] || 30;
 
-          const time = retryAfter * 1000 + (1000 * Math.random());
+          const time = retryAfter * 1000 + (5000 * Math.random());
 
-          this.logger.log(`${name}: Got secondary rate limit error. Waiting ${time}ms before retry.`)
+          this.logger.log(`${name}: Got secondary rate limit error. Waiting ${Math.floor(time/1000)}s before retry.`)
           await timer(time);
         } else {
-          this.logger.log(`${name}: Error calling api`, {error: err, isResponseError: isResponseError(err), status: err.status});
+          this.logger.log(`${name}: Error calling api`, {error: err, isResponseError: isResponseError(err), status: err.status, text: err.response.text});
           throw err;
         }
       }
