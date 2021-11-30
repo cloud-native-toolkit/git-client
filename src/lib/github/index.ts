@@ -101,7 +101,7 @@ abstract class GithubCommon extends GitBase implements GitApi {
     const rateLimitRegex = /.*secondary rate limit.*/g;
     while (true) {
       try {
-        return f();
+        return await f();
       } catch (err) {
         if (isResponseError(err) && err.status === 403 && rateLimitRegex.test(err.message)) {
           const retryAfter = err.response.header['Retry-After'] || 30;
