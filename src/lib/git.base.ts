@@ -94,6 +94,7 @@ export abstract class GitBase extends GitApi {
 
     const baseOutOfDateRegEx = /Base branch was modified/g;
     const pullRequestNotMergableRegEx = /Pull Request is not mergeable/g;
+    const mergeConflictRegEx = /merge conflict between base and head/g;
     const retryTest = async (error: Error): Promise<RetryResult> => {
       const delay = 250 + Math.random() * 750;
 
@@ -107,12 +108,20 @@ export abstract class GitBase extends GitApi {
         return {retry: true, delay};
       } else if (isResponseError(error) && error.status === 405 && pullRequestNotMergableRegEx.test(error.response.text)) {
 
-          this.logger.log('Pull request is not mergeable. Rebasing branch and trying again.');
+        this.logger.log('Pull request is not mergeable. Rebasing branch and trying again.');
 
-          const pr: PullRequest = await this.getPullRequest(options.pullNumber);
-          await this.rebaseBranch(Object.assign({}, pr, {resolver: options.resolver}), {userConfig: options.userConfig});
+        const pr: PullRequest = await this.getPullRequest(options.pullNumber);
+        await this.rebaseBranch(Object.assign({}, pr, {resolver: options.resolver}), {userConfig: options.userConfig});
 
-          return {retry: true, delay};
+        return {retry: true, delay};
+      } else if (isResponseError(error) && error.status === 422 && mergeConflictRegEx.test(error.response.text)) {
+
+        this.logger.log('Merge conflict between base and head. Rebasing branch and trying again.');
+
+        const pr: PullRequest = await this.getPullRequest(options.pullNumber);
+        await this.rebaseBranch(Object.assign({}, pr, {resolver: options.resolver}), {userConfig: options.userConfig});
+
+        return {retry: true, delay};
       } else if (isResponseError(error) && error.status === 409) {
 
         this.logger.log('Base branch was modified. Rebasing branch and trying again.');
