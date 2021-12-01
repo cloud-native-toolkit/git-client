@@ -97,25 +97,34 @@ abstract class GithubCommon extends GitBase implements GitApi {
     return treeResponse.default_branch;
   }
 
-  private async exec<T>(f: () => Promise<T>, name: string): Promise<T> {
+  private async exec<T>(f: () => Promise<T>, name: string, retries: number = 10): Promise<T> {
     const rateLimitRegex = /.*secondary rate limit.*/g;
-    while (true) {
-      try {
-        return await f();
-      } catch (err) {
-        if (isResponseError(err) && err.status === 403 && rateLimitRegex.test(err.response.text)) {
-          const retryAfter = err.response.header['Retry-After'] || 30;
 
-          const time = retryAfter * 1000 + (5000 * Math.random());
+    return new Promise<T>((resolve: (value: T | PromiseLike<T>) => void, reject: (reason?: any) => void) => {
+      return f()
+        .then(resolve)
+        .catch((err) => {
+          if (retries > 0) {
+            if (isResponseError(err) && err.status === 403 && rateLimitRegex.test(err.response.text)) {
+              const retryAfter = err.response.header['Retry-After'] || 30;
 
-          this.logger.log(`${name}: Got secondary rate limit error. Waiting ${Math.round(time/1000)}s before retry.`)
-          await timer(time);
-        } else {
-          this.logger.log(`${name}: Error calling api`, {error: err, isResponseError: isResponseError(err), status: err.status, text: err.response.text, is403: err.status === 403, isRateLimit: rateLimitRegex.test(err.response.text)});
-          throw err;
-        }
-      }
-    }
+              const time = retryAfter * 1000 + (20000 * Math.random());
+
+              this.logger.log(`${name}: Got secondary rate limit error. Waiting ${Math.round(time/1000)}s before retry.`)
+              return timer(time)
+                .then(this.exec.bind(this, f, name, retries - 1))
+                .then(resolve as any)
+                .catch(reject);
+            } else {
+              this.logger.log(`${name}: Error calling api`, {error: err, status: err.status, text: err.response.text, isResponseError: isResponseError(err), is403: err.status === 403, isRateLimit: rateLimitRegex.test(err.response.text)});
+              reject(err);
+            }
+          } else {
+            this.logger.log(`${name}: Retries exceeded`, {error: err});
+            reject(err);
+          }
+        })
+    })
   }
 
   async getPullRequest(pullNumber: number): Promise<PullRequest> {
