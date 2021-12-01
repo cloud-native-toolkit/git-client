@@ -5,6 +5,7 @@ export enum GitHost {
   ghe = 'GHE',
   gogs = 'Gogs',
   bitbucket = 'Bitbucket',
+  gitea = 'Gitea'
 }
 
 export interface GitLocalRepoConfig {
