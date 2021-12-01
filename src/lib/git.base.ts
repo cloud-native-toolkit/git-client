@@ -13,6 +13,8 @@ import {GitHost, TypedGitRepoConfig} from './git.model';
 import {Logger} from '../util/logger';
 import simpleGit, {SimpleGit, SimpleGitOptions, StatusResult} from 'simple-git';
 import {timer} from './timer';
+import {RetryResult, retryWithDelay} from '../util/retry-with-delay';
+import {isResponseError} from '../util/superagent-support';
 
 export abstract class GitBase extends GitApi {
   logger: Logger;
@@ -76,40 +78,46 @@ export abstract class GitBase extends GitApi {
   }
 
   async updateAndMergePullRequest(options: UpdateAndMergePullRequestOptions): Promise<string> {
-    const retryCount: number = options.retryCount !== undefined ? options.retryCount : 5;
+    const retryCount: number = options.retryCount !== undefined ? options.retryCount : 10;
 
-    let count = 0;
-    while (true) {
-      try {
-        if (options.rateLimit) {
-          await timer(1000);
-        }
-        await this.updatePullRequestBranch(options.pullNumber);
+    const _updateAndMergePullRequest = async (): Promise<string> => {
+      if (options.rateLimit) {
+        await timer(1000);
+      }
+      await this.updatePullRequestBranch(options.pullNumber);
 
-        if (options.rateLimit) {
-          await timer(1000);
-        }
-        return this.mergePullRequest(options);
-      } catch (err) {
-        if (err.statusCode === 405 || err.statusCode === 409) {
-          // rebase pull request branch
-          const pr: PullRequest = await this.getPullRequest(options.pullNumber);
+      if (options.rateLimit) {
+        await timer(1000);
+      }
+      return this.mergePullRequest(options);
+    }
 
-          await this.rebaseBranch(Object.assign({}, pr, {resolver: options.resolver}), {userConfig: options.userConfig});
-          continue;
-        }
+    const baseOutOfDateRegEx = /Base branch was modified/g;
+    const retryTest = async (error: Error): Promise<RetryResult> => {
+      const delay = 250 + Math.random() * 750;
 
-        if (count < retryCount) {
-          count += 1;
-          const timeout = 250 + Math.random() * 500;
-          this.logger.log(`Error merging pull request. Wait ${timeout}ms then retry...`, err.message);
-          await timer(timeout);
-        } else {
-          this.logger.log('Error merging pull request. Retry count exceeded.', err.message);
-          throw err;
-        }
+      if (isResponseError(error) && error.status === 405 && baseOutOfDateRegEx.test(error.response.text)) {
+
+        this.logger.log('Base branch was modified. Rebasing branch and trying again.');
+
+        const pr: PullRequest = await this.getPullRequest(options.pullNumber);
+        await this.rebaseBranch(Object.assign({}, pr, {resolver: options.resolver}), {userConfig: options.userConfig});
+
+        return {retry: true, delay};
+      } else if (isResponseError(error) && error.status === 409) {
+
+        this.logger.log('Base branch was modified. Rebasing branch and trying again.');
+
+        const pr: PullRequest = await this.getPullRequest(options.pullNumber);
+        await this.rebaseBranch(Object.assign({}, pr, {resolver: options.resolver}), {userConfig: options.userConfig});
+
+        return {retry: true, delay};
+      } else {
+        return {retry: false};
       }
     }
+
+    return retryWithDelay(_updateAndMergePullRequest, 'updateAndMergePullRequest', retryCount, retryTest);
   }
 
   private buildGitOptions(input: LocalGitConfig): Partial<SimpleGitOptions> {

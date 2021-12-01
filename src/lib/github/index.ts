@@ -15,6 +15,13 @@ import {GitHookConfig, GitHookContentType, TypedGitRepoConfig} from '../git.mode
 import {GitBase} from '../git.base';
 import {isResponseError} from '../../util/superagent-support';
 import {timer} from '../timer';
+import first from '../../util/first';
+import {
+  compositeRetryEvaluation,
+  EvaluateErrorForRetry,
+  RetryResult,
+  retryWithDelay
+} from '../../util/retry-with-delay';
 
 export interface GitHookData {
   name: 'web';
@@ -97,34 +104,30 @@ abstract class GithubCommon extends GitBase implements GitApi {
     return treeResponse.default_branch;
   }
 
-  private async exec<T>(f: () => Promise<T>, name: string, retries: number = 10): Promise<T> {
+  private async exec<T>(f: () => Promise<T>, name: string, retries: number = 10, retryHandler?: EvaluateErrorForRetry): Promise<T> {
     const rateLimitRegex = /.*secondary rate limit.*/g;
 
-    return new Promise<T>((resolve: (value: T | PromiseLike<T>) => void, reject: (reason?: any) => void) => {
-      return f()
-        .then(resolve)
-        .catch((err) => {
-          if (retries > 0) {
-            if (isResponseError(err) && err.status === 403 && rateLimitRegex.test(err.response.text)) {
-              const retryAfter = err.response.header['Retry-After'] || 30;
+    const retryOnSecondaryRateLimit = async (err: any) => {
+      if (isResponseError(err) && err.status === 403 && rateLimitRegex.test(err.response.text)) {
+        const retryAfter = err.response.header['Retry-After'] || 30;
 
-              const time = retryAfter * 1000 + (20000 * Math.random());
+        const delay = retryAfter * 1000 + (20000 * Math.random());
 
-              this.logger.log(`${name}: Got secondary rate limit error. Waiting ${Math.round(time/1000)}s before retry.`)
-              return timer(time)
-                .then(this.exec.bind(this, f, name, retries - 1))
-                .then(resolve as any)
-                .catch(reject);
-            } else {
-              this.logger.log(`${name}: Error calling api`, {error: err, status: err.status, text: err.response.text, isResponseError: isResponseError(err), is403: err.status === 403, isRateLimit: rateLimitRegex.test(err.response.text)});
-              reject(err);
-            }
-          } else {
-            this.logger.log(`${name}: Retries exceeded`, {error: err});
-            reject(err);
-          }
-        })
-    })
+        this.logger.log(`${name}: Got secondary rate limit error. Waiting ${Math.round(delay / 1000)}s before retry.`)
+        return {retry: true, delay};
+      } else {
+        this.logger.log(`${name}: Error calling api`, {error: err, status: err.status, text: err.response?.text, isResponseError: isResponseError(err), is403: err.status === 403, isRateLimit: rateLimitRegex.test(err.response?.text || '')});
+      }
+
+      return {retry: false};
+    }
+
+    const retryTest = retryHandler
+      ? compositeRetryEvaluation([retryOnSecondaryRateLimit, retryHandler])
+      : retryOnSecondaryRateLimit;
+
+    return retryWithDelay(f, name, retries, retryTest);
+
   }
 
   async getPullRequest(pullNumber: number): Promise<PullRequest> {
