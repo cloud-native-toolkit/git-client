@@ -84,11 +84,6 @@ export abstract class GitBase extends GitApi {
       if (options.rateLimit) {
         await timer(1000);
       }
-      await this.updatePullRequestBranch(options.pullNumber);
-
-      if (options.rateLimit) {
-        await timer(1000);
-      }
       return this.mergePullRequest(options);
     }
 
