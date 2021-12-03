@@ -84,7 +84,7 @@ export abstract class GitBase extends GitApi {
       if (options.rateLimit) {
         await timer(1000);
       }
-      return this.mergePullRequest(options);
+      return await this.mergePullRequest(options);
     }
 
     const baseOutOfDateRegEx = /Base branch was modified/g;
