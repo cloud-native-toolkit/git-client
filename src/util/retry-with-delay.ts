@@ -36,6 +36,7 @@ export const retryWithDelay = <T>(f: () => Promise<T>, name: string, retries: nu
           if (result.retry) {
             const delay = result.delay || 5000;
 
+            logger.log(`${name}: Retrying after delay of ${Math.round(delay/1000)}s. ${retries} remaining`);
             return timer(delay)
               .then(retryWithDelay.bind(null, f, name, retries - 1, retryHandler))
               .then(resolve as any)
