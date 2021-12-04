@@ -61,27 +61,32 @@ export abstract class GitBase extends GitApi {
 
     git.fetch();
 
+    this.logger.log(`Rebasing ${config.sourceBranch} branch on ${config.targetBranch}`);
+
     // TODO need to loop through all commits
     git.rebase([config.targetBranch]);
 
-    const status: StatusResult = await git.status();
-    if (status.staged.length === 0 && status.created.length === 0 && status.deleted.length === 0) {
-      return false;
-    }
+    do {
+      const status: StatusResult = await git.status();
+      this.logger.log(`Status after rebase`, {status});
 
-    this.logger.log(`Results of rebase`, {status});
-
-    if (status.conflicted.length > 0) {
-      this.logger.log('  Resolving rebase conflicts');
-
-      if (!await resolver(git, status.conflicted)) {
-        throw new Error('Unable to resolve conflicts: ' + status.conflicted);
+      if (status.ahead === 0 && status.behind === 0) {
+        this.logger.log('Not ahead or behind base branch. Nothing to push.')
+        return false;
       }
 
-      git.add('.');
-    }
+      if (status.conflicted.length > 0) {
+        this.logger.log('  Resolving rebase conflicts');
 
-    git.rebase(['--continue']);
+        if (!await resolver(git, status.conflicted)) {
+          throw new Error('Unable to resolve conflicts: ' + status.conflicted);
+        }
+      }
+      git.add('.');
+
+      git.rebase(['--continue']);
+    } while (false);
+
     await git.push('origin', config.sourceBranch, ['--force-with-lease']);
 
     return true;
