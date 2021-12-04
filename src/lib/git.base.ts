@@ -128,6 +128,10 @@ export abstract class GitBase extends GitApi {
       // } else {
       //   return {retry: false};
       // }
+      this.logger.log('Base branch was modified. Rebasing branch and trying again.');
+
+      const pr: PullRequest = await this.getPullRequest(options.pullNumber);
+      await this.rebaseBranch(Object.assign({}, pr, {resolver: options.resolver}), {userConfig: options.userConfig});
 
       return {retry: true, delay};
     }
