@@ -51,7 +51,11 @@ export abstract class GitBase extends GitApi {
     const repoDir = `/tmp/repo/rebase-${suffix}`;
     const resolver = config.resolver || (() => false);
 
+    this.logger.debug(`Cloning ${this.config.host}/${this.config.owner}/${this.config.repo} repo into ${repoDir}`)
+
     const git: SimpleGitWithApi = await this.clone(repoDir, {userConfig: options.userConfig});
+
+    this.logger.debug(`Checking out branch - ${config.sourceBranch}`);
 
     await git.checkoutBranch(config.sourceBranch, `origin/${config.sourceBranch}`);
 
@@ -63,7 +67,11 @@ export abstract class GitBase extends GitApi {
       return false;
     }
 
+    this.logger.debug(`Results of rebase`, {status});
+
     if (status.conflicted.length > 0) {
+      this.logger.debug('  Resolving rebase conflicts');
+
       if (!await resolver(git, status.conflicted)) {
         throw new Error('Unable to resolve conflicts: ' + status.conflicted);
       }
