@@ -72,7 +72,7 @@ export interface CreatePullRequestOptions {
   maintainer_can_modify?: boolean;
 }
 
-export type MergeResolver = (git: SimpleGitWithApi, conflicts: string[]) => Promise<boolean>;
+export type MergeResolver = (git: SimpleGitWithApi, conflicts: string[]) => Promise<{resolvedConflicts: string[]}>;
 
 export interface MergePullRequestOptions {
   pullNumber: number;
@@ -108,6 +108,7 @@ export interface GitUserConfig {
 
 export interface SimpleGitWithApi extends SimpleGit {
   gitApi: GitApi;
+  repoDir: string;
 }
 
 export abstract class LocalGitApi {
@@ -125,7 +126,7 @@ export abstract class GitApi extends LocalGitApi {
 
   abstract buildWebhookParams(eventId: GitEvent): WebhookParams;
 
-  abstract rebaseBranch(config: {sourceBranch: string, targetBranch: string, resolver: MergeResolver}, options?: {userConfig?: GitUserConfig}): Promise<boolean>;
+  abstract rebaseBranch(config: {sourceBranch: string, targetBranch: string, resolver?: MergeResolver}, options?: {userConfig?: GitUserConfig}): Promise<boolean>;
 
   abstract getPullRequest(pullNumber: number): Promise<PullRequest>;
 
