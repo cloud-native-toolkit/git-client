@@ -28,7 +28,7 @@ export abstract class GitBase extends GitApi {
   async clone(repoDir: string, input: LocalGitConfig): Promise<SimpleGitWithApi> {
     const gitOptions: Partial<SimpleGitOptions> = this.buildGitOptions(input);
 
-    const git: SimpleGit & {gitApi?: GitApi} = simpleGit(gitOptions);
+    const git: SimpleGit & {gitApi?: GitApi, repoDir?: string} = simpleGit(gitOptions);
 
     // clone into repo dir
     await git.clone(`https://${this.credentials()}@${this.config.host}/${this.config.owner}/${this.config.repo}`, repoDir);
@@ -41,15 +41,16 @@ export abstract class GitBase extends GitApi {
     }
 
     git.gitApi = this;
+    git.repoDir = repoDir;
 
     return git as SimpleGitWithApi;
   }
 
-  async rebaseBranch(config: {sourceBranch: string, targetBranch: string, resolver: MergeResolver}, options: {userConfig?: GitUserConfig} = {}): Promise<boolean> {
+  async rebaseBranch(config: {sourceBranch: string, targetBranch: string, resolver?: MergeResolver}, options: {userConfig?: GitUserConfig} = {}): Promise<boolean> {
 
     const suffix = Math.random().toString(36).replace(/[^a-z0-9]+/g, '').substr(0, 5);
     const repoDir = `/tmp/repo/rebase-${suffix}`;
-    const resolver = config.resolver || (() => false);
+    const resolver: MergeResolver = config.resolver || (() => Promise.resolve({resolvedConflicts: []}));
 
     this.logger.log(`Cloning ${this.config.host}/${this.config.owner}/${this.config.repo} repo into ${repoDir}`)
 
@@ -64,29 +65,49 @@ export abstract class GitBase extends GitApi {
     this.logger.log(`Rebasing ${config.sourceBranch} branch on ${config.targetBranch}`);
 
     // TODO need to loop through all commits
-    git.rebase([config.targetBranch]);
+    try {
+      await git.rebase([config.targetBranch]);
+    } catch (err) {
+      this.logger.debug('Error during rebase', err);
+    }
 
+    let status: StatusResult;
     do {
-      const status: StatusResult = await git.status();
-      this.logger.log(`Status after rebase`, {status});
+      status = await git.status();
+      this.logger.debug(`Status after rebase`, {status});
 
-      if (status.ahead === 0 && status.behind === 0) {
-        this.logger.log('Not ahead or behind base branch. Nothing to push.')
-        return false;
+      if (status.not_added.length === 0 && status.deleted.length === 0 && status.conflicted.length === 0 && status.staged.length === 0) {
+        this.logger.log('No changes found after rebase.')
+        break;
       }
 
       if (status.conflicted.length > 0) {
         this.logger.log('  Resolving rebase conflicts');
 
-        if (!await resolver(git, status.conflicted)) {
-          throw new Error('Unable to resolve conflicts: ' + status.conflicted);
+        const {resolvedConflicts} = await resolver(git, status.conflicted);
+        const unresolvedConflicts: string[] = status.conflicted.filter(conflict => !resolvedConflicts.includes(conflict));
+        if (unresolvedConflicts.length > 0) {
+          throw new Error('Unable to resolve conflicts: ' + unresolvedConflicts);
         }
+
+        this.logger.log('Adding resolved conflicts after rebase');
+        await Promise.all(resolvedConflicts.map(async (file: string) => {
+          await git.add(file);
+
+          return file;
+        }));
       }
-      git.add('.');
 
-      git.rebase(['--continue']);
-    } while (false);
+      this.logger.log('Continuing rebase');
+      await git.rebase(['--continue']);
+    } while (true);
 
+    if (status.ahead === 0 && status.behind === 0) {
+      this.logger.debug('No changes resulted from rebase.')
+      return false;
+    }
+
+    this.logger.log(`Pushing changes to ${config.sourceBranch} force-with-lease`)
     await git.push('origin', config.sourceBranch, ['--force-with-lease']);
 
     return true;
