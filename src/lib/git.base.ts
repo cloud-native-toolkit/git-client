@@ -7,7 +7,13 @@ import {
   GitHeader,
   WebhookParams,
   CreatePullRequestOptions,
-  PullRequest, MergePullRequestOptions, UpdateAndMergePullRequestOptions, GitUserConfig, MergeResolver, SimpleGitWithApi
+  PullRequest,
+  MergePullRequestOptions,
+  UpdateAndMergePullRequestOptions,
+  GitUserConfig,
+  MergeResolver,
+  SimpleGitWithApi,
+  ConflictErrors
 } from './git.api';
 import {GitHost, TypedGitRepoConfig} from './git.model';
 import {Logger} from '../util/logger';
@@ -77,25 +83,32 @@ export abstract class GitBase extends GitApi {
       this.logger.debug(`Status after rebase`, {status});
 
       if (status.not_added.length === 0 && status.deleted.length === 0 && status.conflicted.length === 0 && status.staged.length === 0) {
-        this.logger.log('No changes found after rebase.')
         break;
       }
 
       if (status.conflicted.length > 0) {
         this.logger.log('  Resolving rebase conflicts');
 
-        const {resolvedConflicts} = await resolver(git, status.conflicted);
-        const unresolvedConflicts: string[] = status.conflicted.filter(conflict => !resolvedConflicts.includes(conflict));
-        if (unresolvedConflicts.length > 0) {
-          throw new Error('Unable to resolve conflicts: ' + unresolvedConflicts);
+        try {
+          const {resolvedConflicts, conflictErrors} = await resolver(git, status.conflicted);
+          if (conflictErrors && conflictErrors.length > 0) {
+            throw new ConflictErrors(conflictErrors);
+          }
+
+          const unresolvedConflicts: string[] = status.conflicted.filter(conflict => !resolvedConflicts.includes(conflict));
+          if (unresolvedConflicts.length > 0) {
+            throw new Error('Unable to resolve conflicts: ' + unresolvedConflicts);
+          }
+
+          this.logger.log('  Adding resolved conflicts after rebase: ' + resolvedConflicts);
+          await Promise.all(resolvedConflicts.map(async (file: string) => {
+            await git.add(file);
+
+            return file;
+          }));
+        } catch (error) {
+          this.logger.error('Error resolving conflicts', {error});
         }
-
-        this.logger.log('Adding resolved conflicts after rebase');
-        await Promise.all(resolvedConflicts.map(async (file: string) => {
-          await git.add(file);
-
-          return file;
-        }));
       }
 
       this.logger.log('Continuing rebase');

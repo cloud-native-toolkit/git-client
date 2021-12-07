@@ -1,12 +1,18 @@
-import {apiFromUrl, SimpleGitWithApi} from './lib';
+import {apiFromUrl, MergeResolver, SimpleGitWithApi} from './lib';
 import {SimpleGit} from 'simple-git';
 import first from './util/first';
 import {addKustomizeResource} from './kustomization.model';
 import * as fs from 'fs';
 import * as path from 'path';
+import {isString} from 'lodash';
+import {isError} from './util/error-util';
 
 if (process.argv.length < 5) {
   throw new Error('Usage: GIT_USER={user} GIT_TOKEN={token} test-rebase {url} {sourceBranch} {targetBranch}');
+}
+
+if (!process.env.GIT_USER || !process.env.GIT_TOKEN) {
+  throw new Error('Provide GIT_USER and GIT_TOKEN environment variables');
 }
 
 const input = {
@@ -15,19 +21,26 @@ const input = {
   targetBranch: process.argv[4],
 }
 
-const argocdResolver = (applicationPath: string) => {
-  return async (git: SimpleGitWithApi, conflicts: string[]): Promise<{resolvedConflicts: string[]}> => {
+const argocdResolver = (applicationPath: string): MergeResolver => {
+  return async (git: SimpleGitWithApi, conflicts: string[]): Promise<{resolvedConflicts: string[], conflictErrors: Error[]}> => {
     const kustomizeYamls: string[] = conflicts.filter(f => /.*kustomization.yaml/.test(f));
 
-    const resolvedConflicts: string[] = await Promise.all(kustomizeYamls.map(async (kustomizeYaml: string) => {
-      await git.raw(['checkout', '--ours', kustomizeYaml]);
+    const promises: Array<Promise<string | Error>> = kustomizeYamls
+      .map(async (kustomizeYaml: string) => {
+        await git.raw(['checkout', '--ours', kustomizeYaml]);
 
-      await addKustomizeResource(path.join(git.repoDir, kustomizeYaml), applicationPath);
+        await addKustomizeResource(path.join(git.repoDir, kustomizeYaml), applicationPath);
 
-      return kustomizeYaml;
-    }));
+        return kustomizeYaml;
+      })
+      .map(p => p.catch(error => error));
 
-    return {resolvedConflicts};
+    const result: Array<string | Error> = await Promise.all(promises);
+
+    const resolvedConflicts: string[] = result.filter(isString);
+    const conflictErrors: Error[] = result.filter(isError);
+
+    return {resolvedConflicts, conflictErrors};
   }
 }
 
