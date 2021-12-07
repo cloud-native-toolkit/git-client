@@ -116,7 +116,8 @@ abstract class GithubCommon extends GitBase implements GitApi {
         this.logger.log(`${name}: Got secondary rate limit error. Waiting ${Math.round(delay / 1000)}s before retry.`)
         return {retry: true, delay};
       } else {
-        this.logger.log(`${name}: Error calling api`, {error: err, status: err.status, text: err.response?.text, isResponseError: isResponseError(err), is403: err.status === 403, isRateLimit: rateLimitRegex.test(err.response?.text || '')});
+        this.logger.log(`${name}: Error calling api`, {status: err.status, text: err.response?.text, isResponseError: isResponseError(err), is403: err.status === 403, isRateLimit: rateLimitRegex.test(err.response?.text || '')});
+        return {retry: false};
       }
       // const retryAfter = err.response.header['Retry-After'] || 30;
       // const delay = retryAfter * 1000 + (20000 * Math.random());
@@ -129,7 +130,6 @@ abstract class GithubCommon extends GitBase implements GitApi {
       : retryOnSecondaryRateLimit;
 
     return retryWithDelay(f, name, retries, retryTest);
-
   }
 
   async getPullRequest(pullNumber: number): Promise<PullRequest> {
