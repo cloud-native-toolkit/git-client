@@ -27,13 +27,14 @@ export const retryWithDelay = <T>(f: () => Promise<T>, name: string, retries: nu
   const logger: Logger = Container.get(Logger);
 
   return new Promise<T>((resolve: (value: T | PromiseLike<T>) => void, reject: (reason?: any) => void) => {
-    return f()
+    logger.debug(name);
+    f()
       .then(resolve)
       .catch(async (err) => {
         if (retries > 0) {
-          const result: RetryResult = await retryHandler(err);
+          const result: RetryResult | undefined = await retryHandler(err);
 
-          if (result.retry) {
+          if (result && result.retry) {
             const delay = result.delay || 5000;
 
             logger.log(`${name}: Retrying after delay of ${Math.round(delay/1000)}s. ${retries} remaining`);
@@ -42,6 +43,7 @@ export const retryWithDelay = <T>(f: () => Promise<T>, name: string, retries: nu
               .then(resolve as any)
               .catch(reject);
           } else {
+            logger.log(`${name}: Error shouldn't be retried: ${err.status}/${err.message}`);
             reject(err);
           }
         } else {
