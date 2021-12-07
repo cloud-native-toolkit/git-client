@@ -108,20 +108,20 @@ abstract class GithubCommon extends GitBase implements GitApi {
     const rateLimitRegex = /.*secondary rate limit.*/g;
 
     const retryOnSecondaryRateLimit = async (err: any) => {
-      // if (isResponseError(err) && err.status === 403 && rateLimitRegex.test(err.response.text)) {
-      //   const retryAfter = err.response.header['Retry-After'] || 30;
-      //
-      //   const delay = retryAfter * 1000 + (20000 * Math.random());
-      //
-      //   this.logger.log(`${name}: Got secondary rate limit error. Waiting ${Math.round(delay / 1000)}s before retry.`)
-      //   return {retry: true, delay};
-      // } else {
-      //   this.logger.log(`${name}: Error calling api`, {error: err, status: err.status, text: err.response?.text, isResponseError: isResponseError(err), is403: err.status === 403, isRateLimit: rateLimitRegex.test(err.response?.text || '')});
-      // }
-      const retryAfter = err.response.header['Retry-After'] || 30;
-      const delay = retryAfter * 1000 + (20000 * Math.random());
+      if (isResponseError(err) && err.status === 403 && rateLimitRegex.test(err.response.text)) {
+        const retryAfter = err.response.header['Retry-After'] || 30;
 
-      return {retry: true, delay};
+        const delay = retryAfter * 1000 + (20000 * Math.random());
+
+        this.logger.log(`${name}: Got secondary rate limit error. Waiting ${Math.round(delay / 1000)}s before retry.`)
+        return {retry: true, delay};
+      } else {
+        this.logger.log(`${name}: Error calling api`, {error: err, status: err.status, text: err.response?.text, isResponseError: isResponseError(err), is403: err.status === 403, isRateLimit: rateLimitRegex.test(err.response?.text || '')});
+      }
+      // const retryAfter = err.response.header['Retry-After'] || 30;
+      // const delay = retryAfter * 1000 + (20000 * Math.random());
+      //
+      // return {retry: true, delay};
     }
 
     const retryTest = retryHandler
