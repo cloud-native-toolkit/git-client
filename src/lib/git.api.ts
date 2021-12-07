@@ -72,7 +72,13 @@ export interface CreatePullRequestOptions {
   maintainer_can_modify?: boolean;
 }
 
-export type MergeResolver = (git: SimpleGitWithApi, conflicts: string[]) => Promise<{resolvedConflicts: string[]}>;
+export class ConflictErrors extends Error {
+  constructor(public readonly errors: Error[]) {
+    super(`Errors resolving conflicts: ${errors.length}`);
+  }
+}
+
+export type MergeResolver = (git: SimpleGitWithApi, conflicts: string[]) => Promise<{resolvedConflicts: string[], conflictErrors?: Error[]}>;
 
 export interface MergePullRequestOptions {
   pullNumber: number;
