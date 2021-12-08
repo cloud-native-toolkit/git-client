@@ -101,13 +101,17 @@ export abstract class GitBase extends GitApi {
             this.logger.log('  Unresolved conflicts:', unresolvedConflicts);
             throw new UnresolvedConflictsError(unresolvedConflicts);
           }
+
+          this.logger.log('Adding resolved conflicts after rebase');
+          await Promise.all(resolvedConflicts.map(async (file: string) => {
+            await git.add(file);
+            await git.commit(`Resolves conflict with ${file}`);
+            return file;
+          }));
         } catch (error) {
           this.logger.error('Error resolving conflicts', {error});
         }
       }
-
-      this.logger.log('  Adding files to rebase after resolving conflicts');
-      await git.add('.');
 
       this.logger.log('Continuing rebase');
       await git.rebase(['--continue']).catch(error => {
