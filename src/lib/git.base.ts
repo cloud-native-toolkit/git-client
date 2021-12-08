@@ -13,7 +13,7 @@ import {
   GitUserConfig,
   MergeResolver,
   SimpleGitWithApi,
-  ConflictErrors
+  ConflictErrors, UnresolvedConflictsError
 } from './git.api';
 import {GitHost, TypedGitRepoConfig} from './git.model';
 import {Logger} from '../util/logger';
@@ -80,7 +80,7 @@ export abstract class GitBase extends GitApi {
     let status: StatusResult;
     do {
       status = await git.status();
-      this.logger.debug(`Status after rebase`, {status});
+      this.logger.log(`Status after rebase`, {status});
 
       if (status.not_added.length === 0 && status.deleted.length === 0 && status.conflicted.length === 0 && status.staged.length === 0) {
         break;
@@ -92,24 +92,22 @@ export abstract class GitBase extends GitApi {
         try {
           const {resolvedConflicts, conflictErrors} = await resolver(git, status.conflicted);
           if (conflictErrors && conflictErrors.length > 0) {
+            this.logger.log('  Errors resolving conflicts:', conflictErrors);
             throw new ConflictErrors(conflictErrors);
           }
 
           const unresolvedConflicts: string[] = status.conflicted.filter(conflict => !resolvedConflicts.includes(conflict));
           if (unresolvedConflicts.length > 0) {
-            throw new Error('Unable to resolve conflicts: ' + unresolvedConflicts);
+            this.logger.log('  Unresolved conflicts:', unresolvedConflicts);
+            throw new UnresolvedConflictsError(unresolvedConflicts);
           }
-
-          this.logger.log('  Adding resolved conflicts after rebase: ' + resolvedConflicts);
-          await Promise.all(resolvedConflicts.map(async (file: string) => {
-            await git.add(file);
-
-            return file;
-          }));
         } catch (error) {
           this.logger.error('Error resolving conflicts', {error});
         }
       }
+
+      this.logger.log('  Adding files to rebase after resolving conflicts');
+      await git.add('.');
 
       this.logger.log('Continuing rebase');
       await git.rebase(['--continue']);
