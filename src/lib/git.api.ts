@@ -72,9 +72,23 @@ export interface CreatePullRequestOptions {
   maintainer_can_modify?: boolean;
 }
 
+export const isConflictErrors = (value: any): value is ConflictErrors => {
+  return !!value && !!(value as ConflictErrors).errors;
+}
+
 export class ConflictErrors extends Error {
   constructor(public readonly errors: Error[]) {
     super(`Errors resolving conflicts: ${errors.length}`);
+  }
+}
+
+export const isUnresolvedConflictsError = (value: any): value is UnresolvedConflictsError => {
+  return !!value && !!(value as UnresolvedConflictsError).unresolvedConflicts;
+}
+
+export class UnresolvedConflictsError extends Error {
+  constructor(public readonly unresolvedConflicts: string[]) {
+    super('Unable to resolve conflicts: ' + unresolvedConflicts);
   }
 }
 
