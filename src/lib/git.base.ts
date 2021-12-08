@@ -110,7 +110,9 @@ export abstract class GitBase extends GitApi {
       await git.add('.');
 
       this.logger.log('Continuing rebase');
-      await git.rebase(['--continue']);
+      await git.rebase(['--continue']).catch(error => {
+        this.logger.log('Error continuing rebase', {error});
+      });
     } while (true);
 
     if (status.ahead === 0 && status.behind === 0) {
