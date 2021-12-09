@@ -2,11 +2,11 @@ import {get, post, Response} from 'superagent';
 
 import {
   CreatePullRequestOptions,
-  CreateWebhook,
+  CreateWebhook, GetPullRequestOptions,
   GitApi,
   GitEvent,
   GitHeader, MergePullRequestOptions, PullRequest,
-  UnknownWebhookError,
+  UnknownWebhookError, UpdatePullRequestBranchOptions,
   WebhookAlreadyExists
 } from '../git.api';
 import {GitBase} from '../git.base';
@@ -102,7 +102,7 @@ export class Gitlab extends GitBase implements GitApi {
     return new Buffer(fileResponse.content, fileResponse.encoding);
   }
 
-  async getPullRequest(pullNumber: number): Promise<PullRequest> {
+  async getPullRequest(options: GetPullRequestOptions): Promise<PullRequest> {
 
     throw new Error('Method not implemented: getPullRequest')
   }
@@ -117,7 +117,7 @@ export class Gitlab extends GitBase implements GitApi {
     throw new Error('Method not implemented: mergePullRequest')
   }
 
-  async updatePullRequestBranch(pullNumber:number): Promise<string> {
+  async updatePullRequestBranch(options: UpdatePullRequestBranchOptions): Promise<string> {
 
     throw new Error('Method not implemented: updatePullRequestBranch')
   }
@@ -130,7 +130,7 @@ export class Gitlab extends GitBase implements GitApi {
 
     const branchResponse: Branch[] = response.body;
 
-    return first(branchResponse.filter(branch => branch.default).map(branch => branch.name));
+    return first(branchResponse.filter(branch => branch.default).map(branch => branch.name)).valueOrUndefined();
   }
 
   private buildUrl(url: string, params: string[] = []): string {

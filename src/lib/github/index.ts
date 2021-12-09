@@ -2,24 +2,22 @@ import {get, post, put, Response} from 'superagent';
 
 import {
   CreatePullRequestOptions,
-  CreateWebhook,
+  CreateWebhook, GetPullRequestOptions,
   GitApi,
   GitEvent,
   GitHeader,
   MergePullRequestOptions,
   PullRequest,
-  UnknownWebhookError,
+  UnknownWebhookError, UpdatePullRequestBranchOptions,
   WebhookAlreadyExists
 } from '../git.api';
 import {GitHookConfig, GitHookContentType, TypedGitRepoConfig} from '../git.model';
 import {GitBase} from '../git.base';
 import {isResponseError} from '../../util/superagent-support';
 import {timer} from '../timer';
-import first from '../../util/first';
 import {
   compositeRetryEvaluation,
   EvaluateErrorForRetry,
-  RetryResult,
   retryWithDelay
 } from '../../util/retry-with-delay';
 
@@ -104,7 +102,7 @@ abstract class GithubCommon extends GitBase implements GitApi {
     return treeResponse.default_branch;
   }
 
-  private async exec<T>(f: () => Promise<T>, name: string, retries: number = 10, retryHandler?: EvaluateErrorForRetry): Promise<T> {
+  private async exec<T>(f: () => Promise<T>, name: string, {retries = 10, retryHandler, rateLimit = false}: {retries?: number, retryHandler?: EvaluateErrorForRetry, rateLimit?: boolean} = {}): Promise<T> {
     const rateLimitRegex = /.*secondary rate limit.*/g;
 
     const retryOnSecondaryRateLimit = async (err: any) => {
@@ -119,23 +117,18 @@ abstract class GithubCommon extends GitBase implements GitApi {
         this.logger.log(`${name}: Error calling api`, {status: err.status, text: err.response?.text, isResponseError: isResponseError(err), is403: err.status === 403, isRateLimit: rateLimitRegex.test(err.response?.text || '')});
         return {retry: false};
       }
-      // const retryAfter = err.response.header['Retry-After'] || 30;
-      // const delay = retryAfter * 1000 + (20000 * Math.random());
-      //
-      // return {retry: true, delay};
     }
 
-    const retryTest = retryHandler
-      ? compositeRetryEvaluation([retryOnSecondaryRateLimit, retryHandler])
-      : retryOnSecondaryRateLimit;
-
-    return retryWithDelay(f, name, retries, retryTest);
+    if (rateLimit) {
+      await timer(1000);
+    }
+    return retryWithDelay(f, name, retries, compositeRetryEvaluation([retryOnSecondaryRateLimit, retryHandler]));
   }
 
-  async getPullRequest(pullNumber: number): Promise<PullRequest> {
+  async getPullRequest(options: GetPullRequestOptions, retryHandler?: EvaluateErrorForRetry): Promise<PullRequest> {
 
     const f = async (): Promise<PullRequest> => {
-      const response: Response = await this.get(`/pulls/${pullNumber}`);
+      const response: Response = await this.get(`/pulls/${options.pullNumber}`);
 
       return {
         pullNumber: response.body.number,
@@ -144,10 +137,10 @@ abstract class GithubCommon extends GitBase implements GitApi {
       };
     };
 
-    return this.exec(f, 'getPullRequest');
+    return this.exec(f, 'getPullRequest', {retryHandler, rateLimit: options.rateLimit});
   }
 
-  async createPullRequest(options: CreatePullRequestOptions): Promise<PullRequest> {
+  async createPullRequest(options: CreatePullRequestOptions, retryHandler?: EvaluateErrorForRetry): Promise<PullRequest> {
 
     const f = async (): Promise<PullRequest> => {
       const response: Response = await this.post('/pulls', {
@@ -165,10 +158,10 @@ abstract class GithubCommon extends GitBase implements GitApi {
       };
     };
 
-    return this.exec(f, 'createPullRequest');
+    return this.exec(f, 'createPullRequest', {retryHandler, rateLimit: options.rateLimit});
   }
 
-  async mergePullRequest(options: MergePullRequestOptions): Promise<string> {
+  async mergePullRequest(options: MergePullRequestOptions, retryHandler?: EvaluateErrorForRetry): Promise<string> {
 
     const f = async (): Promise<string> => {
       const response: Response = await this.put(`/pulls/${options.pullNumber}/merge`, {
@@ -180,18 +173,18 @@ abstract class GithubCommon extends GitBase implements GitApi {
       return response.body.message;
     }
 
-    return this.exec(f, 'mergePullRequest');
+    return this.exec(f, 'mergePullRequest', {retryHandler, rateLimit: options.rateLimit});
   }
 
-  async updatePullRequestBranch(pullNumber:number): Promise<string> {
+  async updatePullRequestBranch(options: UpdatePullRequestBranchOptions, retryHandler?: EvaluateErrorForRetry): Promise<string> {
 
     const f = async (): Promise<string> => {
-      const response: Response = await this.put(`/pulls/${pullNumber}/update-branch`);
+      const response: Response = await this.put(`/pulls/${options.pullNumber}/update-branch`);
 
       return response.body.message;
     }
 
-    return this.exec(f, 'updatePullRequestBranch');
+    return this.exec(f, 'updatePullRequestBranch', {retryHandler, rateLimit: options.rateLimit});
   }
 
   async createWebhook(options: CreateWebhook): Promise<string> {
