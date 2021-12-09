@@ -5,11 +5,11 @@ import * as StreamZip from 'node-stream-zip';
 
 import {
   CreatePullRequestOptions,
-  CreateWebhook,
+  CreateWebhook, GetPullRequestOptions,
   GitApi,
   GitEvent,
   GitHeader, MergePullRequestOptions, PullRequest,
-  UnknownWebhookError,
+  UnknownWebhookError, UpdatePullRequestBranchOptions,
   WebhookAlreadyExists
 } from '../git.api';
 import {GitBase} from '../git.base';
@@ -104,7 +104,7 @@ export class Gogs extends GitBase implements GitApi {
       return this.createToken();
     }
 
-    return first(tokens.map(token => token.sha1));
+    return first(tokens.map(token => token.sha1)).valueOrFailure('Unable to access retrieve token');
   }
 
   async createToken(): Promise<string> {
@@ -117,7 +117,7 @@ export class Gogs extends GitBase implements GitApi {
     return response.body.sha1;
   }
 
-  async getPullRequest(pullNumber: number): Promise<PullRequest> {
+  async getPullRequest(options: GetPullRequestOptions): Promise<PullRequest> {
 
     throw new Error('Method not implemented: getPullRequest')
   }
@@ -132,7 +132,7 @@ export class Gogs extends GitBase implements GitApi {
     throw new Error('Method not implemented: mergePullRequest')
   }
 
-  async updatePullRequestBranch(pullNumber:number): Promise<string> {
+  async updatePullRequestBranch(options: UpdatePullRequestBranchOptions): Promise<string> {
 
     throw new Error('Method not implemented: updatePullRequestBranch')
   }

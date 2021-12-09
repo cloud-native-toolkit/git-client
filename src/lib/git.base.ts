@@ -19,7 +19,7 @@ import {GitHost, TypedGitRepoConfig} from './git.model';
 import {Logger} from '../util/logger';
 import simpleGit, {SimpleGit, SimpleGitOptions, StatusResult} from 'simple-git';
 import {timer} from './timer';
-import {RetryResult, retryWithDelay} from '../util/retry-with-delay';
+import {compositeRetryEvaluation, EvaluateErrorForRetry, RetryResult, retryWithDelay} from '../util/retry-with-delay';
 import {isResponseError} from '../util/superagent-support';
 
 export abstract class GitBase extends GitApi {
@@ -114,9 +114,7 @@ export abstract class GitBase extends GitApi {
       }
 
       this.logger.log('Continuing rebase');
-      await git.rebase(['--continue']).catch(error => {
-        this.logger.log('Error continuing rebase', {error});
-      });
+      await git.rebase(['--continue']);
     } while (true);
 
     if (status.ahead === 0 && status.behind === 0) {
@@ -130,28 +128,20 @@ export abstract class GitBase extends GitApi {
     return true;
   }
 
-  async updateAndMergePullRequest(options: UpdateAndMergePullRequestOptions): Promise<string> {
-    const retryCount: number = options.retryCount !== undefined ? options.retryCount : 10;
+  async updateAndMergePullRequest(options: UpdateAndMergePullRequestOptions, retryHandler?: EvaluateErrorForRetry): Promise<string> {
     const name = 'updateAndMergePullRequest';
-
-    const _updateAndMergePullRequest = async (): Promise<string> => {
-      if (options.rateLimit) {
-        await timer(1000);
-      }
-      return await this.mergePullRequest(options);
-    }
 
     const baseOutOfDateRegEx = /Base branch was modified/g;
     const pullRequestNotMergableRegEx = /Pull Request is not mergeable/g;
     const mergeConflictRegEx = /merge conflict between base and head/g;
-    const retryTest = async (error: Error): Promise<RetryResult> => {
+    const mergeConflictHandler = async (error: Error): Promise<RetryResult> => {
       const delay = 5000 + Math.random() * 5000;
 
       if (isResponseError(error) && error.status === 405 && baseOutOfDateRegEx.test(error.response.text)) {
 
         this.logger.log(`${name}: Base branch was modified. Rebasing branch and trying again.`);
 
-        const pr: PullRequest = await this.getPullRequest(options.pullNumber);
+        const pr: PullRequest = await this.getPullRequest(options);
         await this.rebaseBranch(Object.assign({}, pr, {resolver: options.resolver}), {userConfig: options.userConfig});
 
         return {retry: true, delay};
@@ -159,7 +149,7 @@ export abstract class GitBase extends GitApi {
 
         this.logger.log(`${name}: Pull request is not mergeable. Rebasing branch and trying again.`);
 
-        const pr: PullRequest = await this.getPullRequest(options.pullNumber);
+        const pr: PullRequest = await this.getPullRequest(options);
         await this.rebaseBranch(Object.assign({}, pr, {resolver: options.resolver}), {userConfig: options.userConfig});
 
         return {retry: true, delay};
@@ -167,7 +157,7 @@ export abstract class GitBase extends GitApi {
 
         this.logger.log(`${name}: Merge conflict between base and head. Rebasing branch and trying again.`);
 
-        const pr: PullRequest = await this.getPullRequest(options.pullNumber);
+        const pr: PullRequest = await this.getPullRequest(options);
         await this.rebaseBranch(Object.assign({}, pr, {resolver: options.resolver}), {userConfig: options.userConfig});
 
         return {retry: true, delay};
@@ -175,7 +165,7 @@ export abstract class GitBase extends GitApi {
 
         this.logger.log(`${name}: Base branch was modified. Rebasing branch and trying again.`);
 
-        const pr: PullRequest = await this.getPullRequest(options.pullNumber);
+        const pr: PullRequest = await this.getPullRequest(options);
         await this.rebaseBranch(Object.assign({}, pr, {resolver: options.resolver}), {userConfig: options.userConfig});
 
         return {retry: true, delay};
@@ -192,7 +182,10 @@ export abstract class GitBase extends GitApi {
       // return {retry: true, delay};
     }
 
-    return retryWithDelay(_updateAndMergePullRequest, 'updateAndMergePullRequest', retryCount, retryTest);
+    return await this.mergePullRequest(
+      options,
+      compositeRetryEvaluation([mergeConflictHandler, retryHandler])
+    );
   }
 
   private buildGitOptions(input: LocalGitConfig): Partial<SimpleGitOptions> {

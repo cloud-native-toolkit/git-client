@@ -2,11 +2,11 @@ import {get, post, Response} from 'superagent';
 
 import {
   CreatePullRequestOptions,
-  CreateWebhook,
+  CreateWebhook, GetPullRequestOptions,
   GitApi,
   GitEvent,
   GitHeader, MergePullRequestOptions, PullRequest,
-  UnknownWebhookError,
+  UnknownWebhookError, UpdatePullRequestBranchOptions,
   WebhookAlreadyExists
 } from '../git.api';
 import {TypedGitRepoConfig} from '../git.model';
@@ -66,7 +66,7 @@ export class Bitbucket extends GitBase implements GitApi {
     return `${this.config.protocol}://api.bitbucket.org/2.0/repositories/${this.config.owner}/${this.config.repo}`;
   }
 
-  async getPullRequest(pullNumber: number): Promise<PullRequest> {
+  async getPullRequest(options: GetPullRequestOptions): Promise<PullRequest> {
 
     throw new Error('Method not implemented: getPullRequest')
   }
@@ -81,7 +81,7 @@ export class Bitbucket extends GitBase implements GitApi {
     throw new Error('Method not implemented: mergePullRequest')
   }
 
-  async updatePullRequestBranch(pullNumber:number): Promise<string> {
+  async updatePullRequestBranch(options: UpdatePullRequestBranchOptions): Promise<string> {
 
     throw new Error('Method not implemented: updatePullRequestBranch')
   }

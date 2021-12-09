@@ -2,7 +2,11 @@ import {timer} from '../lib/timer';
 import first from './first';
 import {Logger} from './logger';
 import {Container} from 'typescript-ioc';
+import {isError} from './error-util';
 
+export function isRetryResult(value: any): value is RetryResult {
+  return !!value && (value as RetryResult).retry !== undefined;
+}
 export interface RetryResult {
   retry: boolean;
   delay?: number;
@@ -10,16 +14,32 @@ export interface RetryResult {
 export type EvaluateErrorForRetry = (error: Error) => Promise<RetryResult>;
 
 export function compositeRetryEvaluation(values: EvaluateErrorForRetry[]): EvaluateErrorForRetry {
+  const filteredRetryValues: EvaluateErrorForRetry[] = values.filter(v => !!v);
+
+  if (filteredRetryValues.length === 1) {
+    return filteredRetryValues[0];
+  } else if (filteredRetryValues.length === 0) {
+    return async (error: Error): Promise<RetryResult> => ({retry: false});
+  }
+
   return async (error: Error): Promise<RetryResult> => {
-    const results: RetryResult[] = await Promise.all(values.map((v: EvaluateErrorForRetry) => v(error)));
+    const results: Array<RetryResult | Error> = await Promise.all(
+      values
+        .map((v: EvaluateErrorForRetry) => v(error))
+        .map(p => p.catch(error => error))
+    );
 
-    const retryResult = first(results.filter((v: RetryResult) => v.retry));
-
-    if (retryResult) {
-      return retryResult;
+    const retryErrors: Error[] = results.filter(isError);
+    if (retryErrors.length > 0) {
+      const logger = Container.get(Logger);
+      logger.log('Error(s) processing retry', retryErrors);
     }
 
-    return {retry: false};
+    return first(
+      results
+        .filter(isRetryResult)
+        .filter((v: RetryResult) => v.retry)
+    ).valueOr({retry: false});
   };
 }
 

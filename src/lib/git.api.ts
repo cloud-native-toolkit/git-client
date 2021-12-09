@@ -1,6 +1,7 @@
 import {SimpleGit, SimpleGitOptions} from 'simple-git';
 
 import {GitHost} from './git.model';
+import {EvaluateErrorForRetry} from '../util/retry-with-delay';
 
 export class CreateWebhook {
   jenkinsUrl?: string;
@@ -63,7 +64,11 @@ export enum GitEvent {
   PUSH = 'push'
 }
 
-export interface CreatePullRequestOptions {
+export interface BaseOptions {
+  rateLimit?: boolean;
+}
+
+export interface CreatePullRequestOptions extends BaseOptions {
   title: string;
   sourceBranch: string;
   targetBranch: string;
@@ -94,7 +99,7 @@ export class UnresolvedConflictsError extends Error {
 
 export type MergeResolver = (git: SimpleGitWithApi, conflicts: string[]) => Promise<{resolvedConflicts: string[], conflictErrors?: Error[]}>;
 
-export interface MergePullRequestOptions {
+export interface MergePullRequestOptions extends BaseOptions {
   pullNumber: number;
   method: 'merge' | 'squash' | 'rebase';
   resolver?: MergeResolver;
@@ -102,10 +107,17 @@ export interface MergePullRequestOptions {
   message?: string;
 }
 
-export interface UpdateAndMergePullRequestOptions extends MergePullRequestOptions {
+export interface UpdateAndMergePullRequestOptions extends MergePullRequestOptions, BaseOptions {
   retryCount?: number;
   userConfig?: GitUserConfig;
-  rateLimit?: boolean;
+}
+
+export interface GetPullRequestOptions extends BaseOptions {
+  pullNumber?: number;
+}
+
+export interface UpdatePullRequestBranchOptions extends BaseOptions {
+  pullNumber?: number;
 }
 
 export interface PullRequest {
@@ -148,15 +160,15 @@ export abstract class GitApi extends LocalGitApi {
 
   abstract rebaseBranch(config: {sourceBranch: string, targetBranch: string, resolver?: MergeResolver}, options?: {userConfig?: GitUserConfig}): Promise<boolean>;
 
-  abstract getPullRequest(pullNumber: number): Promise<PullRequest>;
+  abstract getPullRequest(options: GetPullRequestOptions, retryHandler?: EvaluateErrorForRetry): Promise<PullRequest>;
 
-  abstract createPullRequest(options: CreatePullRequestOptions): Promise<PullRequest>;
+  abstract createPullRequest(options: CreatePullRequestOptions, retryHandler?: EvaluateErrorForRetry): Promise<PullRequest>;
 
-  abstract mergePullRequest(options: MergePullRequestOptions): Promise<string>;
+  abstract mergePullRequest(options: MergePullRequestOptions, retryHandler?: EvaluateErrorForRetry): Promise<string>;
 
-  abstract updateAndMergePullRequest(options: UpdateAndMergePullRequestOptions): Promise<string>;
+  abstract updateAndMergePullRequest(options: UpdateAndMergePullRequestOptions, retryHandler?: EvaluateErrorForRetry): Promise<string>;
 
-  abstract updatePullRequestBranch(pullNumber: number): Promise<string>;
+  abstract updatePullRequestBranch(options: UpdatePullRequestBranchOptions, retryHandler?: EvaluateErrorForRetry): Promise<string>;
 
   abstract clone(repoDir: string, config: LocalGitConfig): Promise<SimpleGitWithApi>;
 }
