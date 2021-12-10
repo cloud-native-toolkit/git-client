@@ -20,7 +20,38 @@ import {Logger} from '../util/logger';
 import simpleGit, {SimpleGit, SimpleGitOptions, StatusResult} from 'simple-git';
 import {timer} from './timer';
 import {compositeRetryEvaluation, EvaluateErrorForRetry, RetryResult, retryWithDelay} from '../util/retry-with-delay';
-import {isResponseError} from '../util/superagent-support';
+import {isResponseError, ResponseError} from '../util/superagent-support';
+
+export function isMergeError(error: Error, logger: Logger = Container.get(Logger)): error is ResponseError {
+
+  const baseOutOfDateRegEx = /Base branch was modified/g;
+  const pullRequestNotMergableRegEx = /Pull Request is not mergeable/g;
+  const mergeConflictRegEx = /merge conflict between base and head/g;
+
+  if (isResponseError(error) && error.status === 405 && baseOutOfDateRegEx.test(error.response.text)) {
+
+    this.logger.log(`Base branch was modified.`);
+
+    return true;
+  } else if (isResponseError(error) && error.status === 405 && pullRequestNotMergableRegEx.test(error.response.text)) {
+
+    this.logger.log(`Pull request is not mergeable.`);
+
+    return true;
+  } else if (isResponseError(error) && error.status === 422 && mergeConflictRegEx.test(error.response.text)) {
+
+    this.logger.log(`Merge conflict between base and head.`);
+
+    return true;
+  } else if (isResponseError(error) && error.status === 409) {
+
+    this.logger.log(`Base branch was modified.`);
+
+    return true;
+  }
+
+  return false;
+}
 
 export abstract class GitBase extends GitApi {
   logger: Logger;
@@ -130,47 +161,21 @@ export abstract class GitBase extends GitApi {
 
   async updateAndMergePullRequest(options: UpdateAndMergePullRequestOptions, retryHandler?: EvaluateErrorForRetry): Promise<string> {
     const name = 'updateAndMergePullRequest';
+    const logger = this.logger.child('updateAndMergePullRequest');
 
-    const baseOutOfDateRegEx = /Base branch was modified/g;
-    const pullRequestNotMergableRegEx = /Pull Request is not mergeable/g;
-    const mergeConflictRegEx = /merge conflict between base and head/g;
     const mergeConflictHandler = async (error: Error): Promise<RetryResult> => {
-      const delay = 5000 + Math.random() * 5000;
 
-      if (isResponseError(error) && error.status === 405 && baseOutOfDateRegEx.test(error.response.text)) {
+      if (isMergeError(error, logger)) {
+        const delay = 5000 + Math.random() * 5000;
 
-        this.logger.log(`${name}: Base branch was modified. Rebasing branch and trying again.`);
-
-        const pr: PullRequest = await this.getPullRequest(options);
-        await this.rebaseBranch(Object.assign({}, pr, {resolver: options.resolver}), {userConfig: options.userConfig});
-
-        return {retry: true, delay};
-      } else if (isResponseError(error) && error.status === 405 && pullRequestNotMergableRegEx.test(error.response.text)) {
-
-        this.logger.log(`${name}: Pull request is not mergeable. Rebasing branch and trying again.`);
-
-        const pr: PullRequest = await this.getPullRequest(options);
-        await this.rebaseBranch(Object.assign({}, pr, {resolver: options.resolver}), {userConfig: options.userConfig});
-
-        return {retry: true, delay};
-      } else if (isResponseError(error) && error.status === 422 && mergeConflictRegEx.test(error.response.text)) {
-
-        this.logger.log(`${name}: Merge conflict between base and head. Rebasing branch and trying again.`);
-
-        const pr: PullRequest = await this.getPullRequest(options);
-        await this.rebaseBranch(Object.assign({}, pr, {resolver: options.resolver}), {userConfig: options.userConfig});
-
-        return {retry: true, delay};
-      } else if (isResponseError(error) && error.status === 409) {
-
-        this.logger.log(`${name}: Base branch was modified. Rebasing branch and trying again.`);
+        logger.log('Rebasing branch and trying again.')
 
         const pr: PullRequest = await this.getPullRequest(options);
         await this.rebaseBranch(Object.assign({}, pr, {resolver: options.resolver}), {userConfig: options.userConfig});
 
         return {retry: true, delay};
       } else {
-        this.logger.log(`${name}: Error shouldn't be retried. ${error.message}/${isResponseError(error) ? error.status : '???'}/${isResponseError(error) ? error.response?.text : '?'}`);
+        logger.log(`${name}: Error shouldn't be retried. ${error.message}/${isResponseError(error) ? error.status : '???'}/${isResponseError(error) ? error.response?.text : '?'}`);
 
         return {retry: false};
       }

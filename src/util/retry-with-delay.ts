@@ -58,8 +58,8 @@ export const retryWithDelay = <T>(f: () => Promise<T>, name: string, retries: nu
             const delay = result.delay || 5000;
 
             logger.log(`${name}: Retrying after delay of ${Math.round(delay/1000)}s. ${retries} remaining`);
-            return timer(delay)
-              .then(retryWithDelay.bind(null, f, name, retries - 1, retryHandler))
+            timer(delay)
+              .then(() => retryWithDelay(f, name, retries - 1, retryHandler))
               .then(resolve as any)
               .catch(reject);
           } else {
@@ -70,7 +70,6 @@ export const retryWithDelay = <T>(f: () => Promise<T>, name: string, retries: nu
           logger.log(`${name}: Retries exceeded`, {error: err});
           reject(err);
         }
-      })
-  })
-
+      });
+  });
 }
