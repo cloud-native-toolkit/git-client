@@ -12,5 +12,5 @@ export interface ResponseError extends Error {
 }
 
 export function isResponseError(error: Error): error is ResponseError {
-  return error && !!((error as ResponseError).status);
+  return error && !!((error as ResponseError).status) && !!((error as ResponseError).response);
 }

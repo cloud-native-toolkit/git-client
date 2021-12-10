@@ -8,6 +8,7 @@ export abstract class Logger {
   abstract debug(message: string, context?: any): void;
   abstract error(message: string, context?: any): void;
   abstract stop(): void;
+  abstract child(context: string): Logger;
 }
 
 export const logFactory: (config: {verbose?: boolean, spinner?: boolean}) => ObjectFactory = ({verbose = process.env.VERBOSE_LOGGING === 'true', spinner = process.env.LOGGING_SPINNER === 'false'}: {verbose?: boolean, spinner?: boolean}): ObjectFactory => {
@@ -23,7 +24,7 @@ export const verboseLoggerFactory: (verbose?: boolean) => ObjectFactory = (verbo
 }
 
 class VerboseLogger implements Logger {
-  constructor(private verbose?: boolean) {}
+  constructor(private verbose?: boolean, private readonly context: string = '') {}
 
   set text(text) {
     this.log(text);
@@ -35,24 +36,24 @@ class VerboseLogger implements Logger {
 
   log(message: string, context?: any): void {
     if (context) {
-      console.log(message, context);
+      console.log(this.msg(message), context);
     } else {
-      console.log(message);
+      console.log(this.msg(message));
     }
   }
 
 
   logn(message: string, context?: any): void {
-    process.stdout.write(message);
+    process.stdout.write(this.msg(message));
   }
 
   debug(message: string, context?: any): void {
     if (!this.verbose) return;
 
     if (context) {
-      console.log(message, context);
+      console.log(this.msg(message), context);
     } else {
-      console.log(message);
+      console.log(this.msg(message));
     }
   }
 
@@ -60,13 +61,25 @@ class VerboseLogger implements Logger {
     if (!this.verbose) return;
 
     if (context) {
-      console.error(message, context);
+      console.error(this.msg(message), context);
     } else {
-      console.error(message);
+      console.error(this.msg(message));
     }
   }
 
   stop() {}
+
+  private msg(message: string): string {
+    if (this.context) {
+      return `${this.context}: ${message}`;
+    }
+
+    return message;
+  }
+
+  child(context: string): Logger {
+    return new VerboseLogger(this.verbose, context);
+  }
 }
 
 Container.bind(Logger).factory(verboseLoggerFactory());
