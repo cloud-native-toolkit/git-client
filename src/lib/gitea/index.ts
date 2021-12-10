@@ -5,11 +5,11 @@ import * as StreamZip from 'node-stream-zip';
 
 import {
   CreatePullRequestOptions,
-  CreateWebhook,
+  CreateWebhook, GetPullRequestOptions,
   GitApi,
   GitEvent,
   GitHeader, MergePullRequestOptions, PullRequest,
-  UnknownWebhookError,
+  UnknownWebhookError,UpdatePullRequestBranchOptions,
   WebhookAlreadyExists
 } from '../git.api';
 import {GitBase} from '../git.base';
@@ -118,7 +118,7 @@ export class Gitea extends GitBase implements GitApi {
   //   return response.body.sha1;
   // }
 
-  async getPullRequest(pullNumber: number): Promise<PullRequest> {
+  async getPullRequest(options: GetPullRequestOptions): Promise<PullRequest> {
 
     throw new Error('Method not implemented: getPullRequest')
   }
@@ -133,7 +133,7 @@ export class Gitea extends GitBase implements GitApi {
     throw new Error('Method not implemented: mergePullRequest')
   }
 
-  async updatePullRequestBranch(pullNumber:number): Promise<string> {
+  async updatePullRequestBranch(options: UpdatePullRequestBranchOptions): Promise<string> {
 
     throw new Error('Method not implemented: updatePullRequestBranch')
   }
@@ -215,7 +215,7 @@ export class Gitea extends GitBase implements GitApi {
     try {
       // const token: string = await this.getToken();
 
-      if( "http" === this.config.protocol){
+      if( "http" === this.config.protocol.toLowerCase()){
         console.log("***** Warning! Creating webhooks for repo where urls start with http may not work.  If possible use https.");
       }
       const response: Response = await post(this.getBaseUrl() + '/hooks')
