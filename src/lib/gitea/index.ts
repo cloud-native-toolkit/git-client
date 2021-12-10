@@ -215,6 +215,9 @@ export class Gitea extends GitBase implements GitApi {
     try {
       // const token: string = await this.getToken();
 
+      if( "http" === this.config.protocol){
+        console.log("***** Warning! Creating webhooks for repo where urls start with http may not work.  If possible use https.");
+      }
       const response: Response = await post(this.getBaseUrl() + '/hooks')
         .auth(this.config.username, this.config.password)
         .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)

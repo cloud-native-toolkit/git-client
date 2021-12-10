@@ -58,7 +58,7 @@ async function getGitRepoType(config: AuthGitRepoConfig): Promise<GitHost> {
     return GitHost.gitlab;
   }
 
-  if (await hasBody(`${config.protocol}://${config.host}/api/v1/settings/api/${config.username}`, config)) {
+  if (await hasBody(`${config.protocol}://${config.host}/api/v1/settings/api`, config)) {
     return GitHost.gitea;
   }
 
