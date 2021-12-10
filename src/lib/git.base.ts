@@ -22,7 +22,9 @@ import {timer} from './timer';
 import {compositeRetryEvaluation, EvaluateErrorForRetry, RetryResult, retryWithDelay} from '../util/retry-with-delay';
 import {isResponseError, ResponseError} from '../util/superagent-support';
 
-export function isMergeError(error: Error, logger: Logger = Container.get(Logger)): error is ResponseError {
+export function isMergeError(error: Error): error is ResponseError {
+
+  const logger: Logger = this.logger || Container.get(Logger);
 
   const baseOutOfDateRegEx = /Base branch was modified/g;
   const pullRequestNotMergableRegEx = /Pull Request is not mergeable/g;
@@ -30,22 +32,22 @@ export function isMergeError(error: Error, logger: Logger = Container.get(Logger
 
   if (isResponseError(error) && error.status === 405 && baseOutOfDateRegEx.test(error.response.text)) {
 
-    this.logger.log(`Base branch was modified.`);
+    logger.log(`Base branch was modified.`);
 
     return true;
   } else if (isResponseError(error) && error.status === 405 && pullRequestNotMergableRegEx.test(error.response.text)) {
 
-    this.logger.log(`Pull request is not mergeable.`);
+    logger.log(`Pull request is not mergeable.`);
 
     return true;
   } else if (isResponseError(error) && error.status === 422 && mergeConflictRegEx.test(error.response.text)) {
 
-    this.logger.log(`Merge conflict between base and head.`);
+    logger.log(`Merge conflict between base and head.`);
 
     return true;
   } else if (isResponseError(error) && error.status === 409) {
 
-    this.logger.log(`Base branch was modified.`);
+    logger.log(`Base branch was modified.`);
 
     return true;
   }
@@ -160,12 +162,12 @@ export abstract class GitBase extends GitApi {
   }
 
   async updateAndMergePullRequest(options: UpdateAndMergePullRequestOptions, retryHandler?: EvaluateErrorForRetry): Promise<string> {
-    const name = 'updateAndMergePullRequest';
     const logger = this.logger.child('updateAndMergePullRequest');
+    const _isMergeError: (error: Error) => error is ResponseError = isMergeError.bind({logger});
 
     const mergeConflictHandler = async (error: Error): Promise<RetryResult> => {
 
-      if (isMergeError(error, logger)) {
+      if (_isMergeError(error)) {
         const delay = 5000 + Math.random() * 5000;
 
         logger.log('Rebasing branch and trying again.')
@@ -175,7 +177,7 @@ export abstract class GitBase extends GitApi {
 
         return {retry: true, delay};
       } else {
-        logger.log(`${name}: Error shouldn't be retried. ${error.message}/${isResponseError(error) ? error.status : '???'}/${isResponseError(error) ? error.response?.text : '?'}`);
+        logger.log(`Error shouldn't be retried. ${error.message}/${isResponseError(error) ? error.status : '???'}/${isResponseError(error) ? error.response?.text : '?'}`);
 
         return {retry: false};
       }
