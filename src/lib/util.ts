@@ -2,6 +2,7 @@ import {AuthGitRepoConfig, GitHost, GitRepoConfig, TypedGitRepoConfig} from './g
 import {Github, GithubEnterprise} from './github';
 import {Gitlab} from './gitlab';
 import {Gogs} from './gogs';
+import {Gitea} from './gitea';
 import {Bitbucket} from './bitbucket';
 import {GitApi} from './git.api';
 import * as _ from 'lodash';
@@ -18,6 +19,7 @@ const API_FACTORIES = [
   {key: GitHost.gitlab, value: Gitlab},
   {key: GitHost.gogs, value: Gogs},
   {key: GitHost.bitbucket, value: Bitbucket},
+  {key: GitHost.gitea, value: Gitea}
 ].reduce((result: {[key: string]: any}, current: {key: GitHost, value: any}) => {
   result[current.key] = current.value;
 
@@ -54,6 +56,10 @@ async function getGitRepoType(config: AuthGitRepoConfig): Promise<GitHost> {
 
   if (await hasBody(`${config.protocol}://${config.host}/api/v4/projects`, config)) {
     return GitHost.gitlab;
+  }
+
+  if (await hasBody(`${config.protocol}://${config.host}/api/v1/settings/api`, config)) {
+    return GitHost.gitea;
   }
 
   if (await hasBody(`${config.protocol}://${config.host}/api/v1/users/${config.username}`, config)) {
