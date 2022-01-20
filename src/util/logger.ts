@@ -17,9 +17,9 @@ export const logFactory: (config: {verbose?: boolean, spinner?: boolean}) => Obj
   }
 }
 
-export const verboseLoggerFactory: (verbose?: boolean) => ObjectFactory = (verbose: boolean = process.env.VERBOSE_LOGGING === 'true') => {
+export const verboseLoggerFactory: (verbose?: boolean) => ObjectFactory = (verbose?: boolean) => {
   return () => {
-    return new VerboseLogger(verbose);
+    return new VerboseLogger(verbose || process.env.VERBOSE_LOGGING === 'true');
   }
 }
 
