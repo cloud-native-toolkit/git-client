@@ -151,12 +151,18 @@ export abstract class LocalGitApi {
   abstract getDefaultBranch(): Promise<string>;
 }
 
+export interface DeleteBranchOptions {
+  branch: string;
+}
+
 export abstract class GitApi extends LocalGitApi {
   abstract getType(): GitHost;
 
   abstract createWebhook(request: CreateWebhook): Promise<string>;
 
   abstract buildWebhookParams(eventId: GitEvent): WebhookParams;
+
+  abstract deleteBranch(options: DeleteBranchOptions): Promise<string>;
 
   abstract rebaseBranch(config: {sourceBranch: string, targetBranch: string, resolver?: MergeResolver}, options?: {userConfig?: GitUserConfig}): Promise<boolean>;
 

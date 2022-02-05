@@ -2,7 +2,7 @@ import {get, post, Response} from 'superagent';
 
 import {
   CreatePullRequestOptions,
-  CreateWebhook, GetPullRequestOptions,
+  CreateWebhook, DeleteBranchOptions, GetPullRequestOptions,
   GitApi,
   GitEvent,
   GitHeader, MergePullRequestOptions, PullRequest,
@@ -64,6 +64,10 @@ export class Bitbucket extends GitBase implements GitApi {
 
   getBaseUrl(): string {
     return `${this.config.protocol}://api.bitbucket.org/2.0/repositories/${this.config.owner}/${this.config.repo}`;
+  }
+
+  async deleteBranch({branch}: DeleteBranchOptions): Promise<string> {
+    throw new Error('Method not implemented: deleteBranch')
   }
 
   async getPullRequest(options: GetPullRequestOptions): Promise<PullRequest> {

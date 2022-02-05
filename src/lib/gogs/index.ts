@@ -5,7 +5,7 @@ import * as StreamZip from 'node-stream-zip';
 
 import {
   CreatePullRequestOptions,
-  CreateWebhook, GetPullRequestOptions,
+  CreateWebhook, DeleteBranchOptions, GetPullRequestOptions,
   GitApi,
   GitEvent,
   GitHeader, MergePullRequestOptions, PullRequest,
@@ -115,6 +115,10 @@ export class Gogs extends GitBase implements GitApi {
       .send({name: 'gogs'});
 
     return response.body.sha1;
+  }
+
+  async deleteBranch({branch}: DeleteBranchOptions): Promise<string> {
+    throw new Error('Method not implemented: deleteBranch')
   }
 
   async getPullRequest(options: GetPullRequestOptions): Promise<PullRequest> {

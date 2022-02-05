@@ -1,8 +1,8 @@
-import {get, post, put, Response} from 'superagent';
+import {delete as httpDelete, get, post, put, Response} from 'superagent';
 
 import {
   CreatePullRequestOptions,
-  CreateWebhook, GetPullRequestOptions,
+  CreateWebhook, DeleteBranchOptions, GetPullRequestOptions,
   GitApi,
   GitEvent,
   GitHeader,
@@ -130,6 +130,11 @@ abstract class GithubCommon extends GitBase implements GitApi {
     return retryWithDelay(f, name, retries, compositeRetryEvaluation([retryOnSecondaryRateLimit, retryHandler]));
   }
 
+  async deleteBranch({branch}: DeleteBranchOptions): Promise<string> {
+    return await this.delete(`/git/refs/heads/${branch}`)
+      .then(res => 'success')
+  }
+
   async getPullRequest(options: GetPullRequestOptions, retryHandler?: EvaluateErrorForRetry): Promise<PullRequest> {
 
     const f = async (): Promise<PullRequest> => {
@@ -243,6 +248,15 @@ abstract class GithubCommon extends GitBase implements GitApi {
     const url: string = uri.startsWith('http') ? uri : this.getBaseUrl() + uri;
 
     return get(url)
+      .auth(this.config.username, this.config.password)
+      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
+      .accept('application/vnd.github.v3+json');
+  }
+
+  async delete(uri: string = ''): Promise<Response> {
+    const url: string = uri.startsWith('http') ? uri : this.getBaseUrl() + uri;
+
+    return httpDelete(url)
       .auth(this.config.username, this.config.password)
       .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
       .accept('application/vnd.github.v3+json');
