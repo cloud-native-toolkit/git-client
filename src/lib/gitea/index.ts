@@ -5,11 +5,11 @@ import * as StreamZip from 'node-stream-zip';
 
 import {
   CreatePullRequestOptions,
-  CreateWebhook, GetPullRequestOptions,
+  CreateWebhook, DeleteBranchOptions, GetPullRequestOptions,
   GitApi,
   GitEvent,
   GitHeader, MergePullRequestOptions, PullRequest,
-  UnknownWebhookError,UpdatePullRequestBranchOptions,
+  UnknownWebhookError, UpdatePullRequestBranchOptions,
   WebhookAlreadyExists
 } from '../git.api';
 import {GitBase} from '../git.base';
@@ -117,6 +117,10 @@ export class Gitea extends GitBase implements GitApi {
 
   //   return response.body.sha1;
   // }
+
+  async deleteBranch({branch}: DeleteBranchOptions): Promise<string> {
+    throw new Error('Method not implemented: deleteBranch')
+  }
 
   async getPullRequest(options: GetPullRequestOptions): Promise<PullRequest> {
 

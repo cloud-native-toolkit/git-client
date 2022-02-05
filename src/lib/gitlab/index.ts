@@ -2,7 +2,7 @@ import {get, post, Response} from 'superagent';
 
 import {
   CreatePullRequestOptions,
-  CreateWebhook, GetPullRequestOptions,
+  CreateWebhook, DeleteBranchOptions, GetPullRequestOptions,
   GitApi,
   GitEvent,
   GitHeader, MergePullRequestOptions, PullRequest,
@@ -73,6 +73,10 @@ export class Gitlab extends GitBase implements GitApi {
 
   getBaseUrl(): string {
     return `${this.config.protocol}://${this.config.host}/api/v4/projects/${this.config.owner}%2F${this.config.repo}`;
+  }
+
+  async deleteBranch({branch}: DeleteBranchOptions): Promise<string> {
+    throw new Error('Method not implemented: deleteBranch')
   }
 
   async listFiles(): Promise<Array<{path: string, url?: string, contents?: string}>> {
