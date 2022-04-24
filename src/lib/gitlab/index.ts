@@ -1,7 +1,8 @@
-import {get, post, Response} from 'superagent';
+import {get, post, delete as deleteUrl, Response} from 'superagent';
 
 import {
   CreatePullRequestOptions,
+  CreateRepoOptions,
   CreateWebhook, DeleteBranchOptions, GetPullRequestOptions,
   GitApi,
   GitEvent,
@@ -10,9 +11,16 @@ import {
   WebhookAlreadyExists
 } from '../git.api';
 import {GitBase} from '../git.base';
-import {TypedGitRepoConfig} from '../git.model';
+import {TypedGitRepoConfig, Webhook} from '../git.model';
 import {isResponseError} from '../../util/superagent-support';
 import first from '../../util/first';
+import {apiFromConfig} from '../util';
+
+export class GroupNotFoundError extends Error {
+  constructor(public readonly groupName) {
+    super(`Unable to find group: ${groupName}`);
+  }
+}
 
 interface GitlabHookData {
   id: string;
@@ -67,12 +75,21 @@ interface Branch {
 }
 
 export class Gitlab extends GitBase implements GitApi {
+
   constructor(config: TypedGitRepoConfig) {
     super(config);
   }
 
+  getConfig(): TypedGitRepoConfig {
+    return this.config
+  }
+
   getBaseUrl(): string {
-    return `${this.config.protocol}://${this.config.host}/api/v4/projects/${this.config.owner}%2F${this.config.repo}`;
+    return `${this.config.protocol}://${this.config.host}/api/v4`
+  }
+
+  getRepoUrl(): string {
+    return `${this.getBaseUrl()}/projects/${this.config.owner}%2F${this.config.repo}`;
   }
 
   async deleteBranch({branch}: DeleteBranchOptions): Promise<string> {
@@ -80,7 +97,7 @@ export class Gitlab extends GitBase implements GitApi {
   }
 
   async listFiles(): Promise<Array<{path: string, url?: string, contents?: string}>> {
-    const response: Response = await get(this.buildUrl(this.getBaseUrl() + '/repository/tree', [this.branchParam(), 'per_page=1000']))
+    const response: Response = await get(this.buildUrl(this.getRepoUrl() + '/repository/tree', [this.branchParam(), 'per_page=1000']))
       .set('Private-Token', this.config.password)
       .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
       .accept('application/json');
@@ -91,7 +108,7 @@ export class Gitlab extends GitBase implements GitApi {
       .filter(tree => tree.type === 'blob')
       .map(tree => ({
         path: tree.path.replace('files/', ''),
-        url: this.getBaseUrl() + '/repository/' + tree.path,
+        url: this.getRepoUrl() + '/repository/' + tree.path,
       }));
   }
 
@@ -127,7 +144,7 @@ export class Gitlab extends GitBase implements GitApi {
   }
 
   async getDefaultBranch(): Promise<string> {
-    const response: Response = await get(this.getBaseUrl() + '/repository/branches')
+    const response: Response = await get(this.getRepoUrl() + '/repository/branches')
       .set('Private-Token', this.config.password)
       .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
       .accept('application/json');
@@ -154,11 +171,15 @@ export class Gitlab extends GitBase implements GitApi {
 
   async createWebhook(options: CreateWebhook): Promise<string> {
     try {
-      const response: Response = await post(this.getBaseUrl() + '/hooks')
+      const response: Response = await post(this.getRepoUrl() + '/hooks')
         .set('Private-Token', this.config.password)
         .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
         .accept('application/json')
-        .send(this.buildWebhookData(Object.assign({}, this.config, options)));
+        .send(this.buildWebhookData(Object.assign({}, this.config, options)))
+        .catch(error => {
+          console.log('Error', error)
+          throw error;
+        });
 
       return response.body.id;
     } catch (err) {
@@ -221,6 +242,81 @@ export class Gitlab extends GitBase implements GitApi {
 
   getEventName(eventId: GitEvent): string {
     return GitlabEvent[eventId];
+  }
+
+  async createRepo(options: CreateRepoOptions): Promise<GitApi> {
+    if (this.config.owner === this.config.username) {
+      return post(this.getBaseUrl())
+        .set('Private-Token', this.config.password)
+        .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
+        .accept('application/json')
+        .send({
+          name: options.name,
+          visibility: options.private ? 'private' : 'public'
+        })
+        .then(res => {
+          return this.getRepoApi({repo: res.body.name, url: res.body.http_url_to_repo})
+        })
+    } else {
+      const namespaceId: number = await get(this.getBaseUrl() + '/groups?search=' + this.config.owner)
+        .set('Private-Token', this.config.password)
+        .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
+        .accept('application/json')
+        .then(res => {
+          const groups: Array<{id: number}> = res.body;
+
+          if (groups.length === 0) {
+            throw new GroupNotFoundError(this.config.owner)
+          }
+
+          return groups[0].id
+        })
+
+      return post(this.getBaseUrl() + '/projects')
+        .set('Private-Token', this.config.password)
+        .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
+        .accept('application/json')
+        .send({
+          name: options.name,
+          namespace_id: namespaceId,
+          visibility: options.private ? 'private' : 'public'
+        })
+        .then(async res => {
+          return this.getRepoApi({repo: res.body.name, url: res.body.http_url_to_repo})
+        })
+    }
+  }
+
+  async deleteRepo(): Promise<GitApi> {
+    // const repoId: string = await this.getRepoId();
+
+    return deleteUrl(this.getRepoUrl())
+      .set('Private-Token', this.config.password)
+      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
+      .accept('application/json')
+      .then(res => {
+        const url = this.config.url.replace(new RegExp('(.*)/.*', 'g'), '$1');
+
+        return this.getRepoApi({url})
+      })
+  }
+
+  async getWebhooks(): Promise<Webhook[]> {
+    return get(this.getRepoUrl() + '/hooks')
+      .set('Private-Token', this.config.password)
+      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
+      .accept('application/json')
+      .then<Webhook[]>(res => {
+        console.log('Got hooks', res.body)
+        return (res.body as any[])
+          .map(hook => ({id: hook.id, name: hook.id, active: true, events: [], config: {content_type: 'application/json', url: hook.url, insecure_ssl: hook.enable_ssl_verification ? 1 : 0}}))
+      })
+  }
+
+  getRepoApi({repo, url}: {repo?: string, url: string}): GitApi {
+    const newConfig = Object.assign({}, this.config, {repo, url})
+
+    return apiFromConfig(newConfig)
   }
 
 }

@@ -9,7 +9,7 @@ import * as _ from 'lodash';
 import {get, Response} from 'superagent';
 
 const GIT_URL_PATTERNS = {
-  'http': '(https{0,1})://(.*)/(.*)/([^#]*)#{0,1}(.*)',
+  'http': '(https{0,1})://([^/]*)/([^/]*)/{0,1}([^#]*)#{0,1}(.*)',
   'git@': '(git@)(.*):(.*)/([^#]*)#{0,1}(.*)'
 };
 
@@ -30,6 +30,10 @@ const API_FACTORIES = [
 export async function apiFromUrl(repoUrl: string, credentials: {username: string, password: string}, branch?: string): Promise<GitApi> {
   const config: TypedGitRepoConfig = await gitRepoConfigFromUrl(repoUrl, credentials, branch);
 
+  return apiFromConfig(config);
+}
+
+export function apiFromConfig(config: TypedGitRepoConfig): GitApi {
   return new API_FACTORIES[config.type](config);
 }
 
@@ -113,16 +117,24 @@ export function parseGitUrl(url: string): GitRepoConfig {
   const branch = parseBranch(results[5]);
 
   return Object.assign({
-      url: `${protocol}://${host}/${owner}/${repo}.git`,
+      url: buildGitUrl(protocol, host, owner, repo),
       protocol,
       host,
       owner,
-      repo,
     },
+    repo ? {repo} : {},
     branch ? {branch}: {},
     username ? {username} : {},
     password ? {password} : {},
   );
+}
+
+function buildGitUrl(protocol: string, host: string, owner: string, repo?: string): string {
+  if (repo) {
+    return `${protocol}://${host}/${owner}/${repo}.git`
+  }
+
+  return `${protocol}://${host}/${owner}`
 }
 
 function parseRepoHost(host: string): {host: string, username?: string, password?: string} {

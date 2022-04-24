@@ -61,3 +61,15 @@ export enum GitEvents {
   push = 'push',
   pullRequest = 'pull_request'
 }
+
+export interface Webhook {
+  id: string;
+  name: string;
+  active: boolean;
+  events: string[];
+  config: {
+    content_type: string;
+    url: string;
+    insecure_ssl: number;
+  }
+}

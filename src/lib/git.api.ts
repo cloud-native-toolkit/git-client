@@ -1,6 +1,6 @@
 import {SimpleGit, SimpleGitOptions} from 'simple-git';
 
-import {GitHost} from './git.model';
+import {GitHost, TypedGitRepoConfig, Webhook} from './git.model';
 import {EvaluateErrorForRetry} from '../util/retry-with-delay';
 
 export class CreateWebhook {
@@ -155,8 +155,17 @@ export interface DeleteBranchOptions {
   branch: string;
 }
 
+export interface CreateRepoOptions {
+  name: string;
+  private?: boolean;
+}
+
 export abstract class GitApi extends LocalGitApi {
   abstract getType(): GitHost;
+
+  abstract getConfig(): TypedGitRepoConfig;
+
+  abstract getWebhooks(): Promise<Webhook[]>;
 
   abstract createWebhook(request: CreateWebhook): Promise<string>;
 
@@ -177,4 +186,8 @@ export abstract class GitApi extends LocalGitApi {
   abstract updatePullRequestBranch(options: UpdatePullRequestBranchOptions, retryHandler?: EvaluateErrorForRetry): Promise<string>;
 
   abstract clone(repoDir: string, config: LocalGitConfig): Promise<SimpleGitWithApi>;
+
+  abstract createRepo(options: CreateRepoOptions): Promise<GitApi>;
+
+  abstract deleteRepo(): Promise<GitApi>;
 }
