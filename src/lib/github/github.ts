@@ -1,7 +1,7 @@
 import {delete as httpDelete, get, post, put, Response} from 'superagent';
 
 import {
-  CreatePullRequestOptions,
+  CreatePullRequestOptions, CreateRepoOptions,
   CreateWebhook, DeleteBranchOptions, GetPullRequestOptions,
   GitApi,
   GitEvent,
@@ -11,7 +11,7 @@ import {
   UnknownWebhookError, UpdatePullRequestBranchOptions,
   WebhookAlreadyExists
 } from '../git.api';
-import {GitHookConfig, GitHookContentType, TypedGitRepoConfig} from '../git.model';
+import {GitHookConfig, GitHookContentType, TypedGitRepoConfig, Webhook} from '../git.model';
 import {GitBase} from '../git.base';
 import {isResponseError, ResponseError} from '../../util/superagent-support';
 import {timer} from '../timer';
@@ -20,6 +20,9 @@ import {
   EvaluateErrorForRetry,
   retryWithDelay
 } from '../../util/retry-with-delay';
+import {apiFromConfig} from '../util';
+import {Octokit} from '@octokit/core'
+import {ThrottledOctokit} from './octokit';
 
 export interface GitHookData {
   name: 'web';
@@ -78,11 +81,28 @@ function isSecondaryRateLimitError(err: Error): err is ResponseError {
 }
 
 abstract class GithubCommon extends GitBase implements GitApi {
+  octokit: Octokit;
+
   protected constructor(config: TypedGitRepoConfig) {
     super(config);
+
+    this.octokit = new ThrottledOctokit({
+      auth: config.password,
+      baseUrl: this.getBaseUrl(),
+    })
   }
 
   abstract getBaseUrl(): string;
+
+  abstract getRepoUri(): string;
+
+  abstract getRepoUrl(): string;
+
+  getRepoApi({repo, url}: {repo?: string, url: string}): GitApi {
+    const newConfig = Object.assign({}, this.config, {repo, url})
+
+    return apiFromConfig(newConfig)
+  }
 
   async listFiles(): Promise<Array<{path: string, url?: string, contents?: string}>> {
     const response: Response = await this.get(`/git/trees/${this.config.branch}`);
@@ -197,6 +217,74 @@ abstract class GithubCommon extends GitBase implements GitApi {
     return this.exec(f, 'updatePullRequestBranch', {retryHandler, rateLimit: options.rateLimit});
   }
 
+  async get(uri: string = ''): Promise<Response> {
+    const url: string = uri.startsWith('http') ? uri : this.getRepoUrl() + uri;
+
+    return get(url)
+      .auth(this.config.username, this.config.password)
+      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
+      .accept('application/vnd.github.v3+json');
+  }
+
+  async delete(uri: string = ''): Promise<Response> {
+    const url: string = uri.startsWith('http') ? uri : this.getRepoUrl() + uri;
+
+    return httpDelete(url)
+      .auth(this.config.username, this.config.password)
+      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
+      .accept('application/vnd.github.v3+json');
+  }
+
+  async post(uri: string, data: any): Promise<Response> {
+    return post(this.getRepoUrl() + uri)
+      .auth(this.config.username, this.config.password)
+      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
+      .accept('application/vnd.github.v3+json')
+      .send(data);
+  }
+
+  async put(uri: string, data: any = {}): Promise<Response> {
+    return put(this.getRepoUrl() + uri)
+      .auth(this.config.username, this.config.password)
+      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
+      .accept('application/vnd.github.v3+json')
+      .send(data);
+  }
+
+  async createRepo(options: CreateRepoOptions): Promise<GitApi> {
+    console.log(`Creating repo: ${this.config.owner}/${options.name}`)
+
+    if (this.config.owner === this.config.username) {
+      return this.octokit
+        .request('POST /user/repos', {
+          name: options.name,
+          private: !!options.private
+        })
+        .then(res => this.getRepoApi({repo: options.name, url: res.url}))
+    } else {
+      return this.octokit
+        .request('POST /orgs/{org}/repos', {
+          org: this.config.owner,
+          name: options.name,
+          private: !!options.private
+        })
+        .then(res => this.getRepoApi({repo: options.name, url: res.url}))
+    }
+  }
+
+  async deleteRepo(): Promise<GitApi> {
+    return this.octokit
+      .request('DELETE /repos/{owner}/{repo}', {
+        owner: this.config.owner,
+        repo: this.config.repo
+      })
+      .then(res => {
+        const url = this.config.url.replace(new RegExp('(.*)/.*', 'g'), '$1')
+
+        return this.getRepoApi({url})
+      })
+  }
+
   async createWebhook(options: CreateWebhook): Promise<string> {
 
     try {
@@ -214,6 +302,30 @@ abstract class GithubCommon extends GitBase implements GitApi {
         throw new UnknownWebhookError(err.message, err);
       }
     }
+  }
+
+  async getWebhooks(): Promise<Webhook[]> {
+    return this.octokit.request(`GET ${this.getRepoUri()}/hooks`)
+      .then(res => res.data) as Promise<any>
+  }
+
+  buildWebhookData({jenkinsUrl, webhookUrl}: {jenkinsUrl?: string, webhookUrl?: string}): GitHookData {
+    const url: string = webhookUrl ? webhookUrl : `${jenkinsUrl}/github-webhook/`;
+
+    const config: GitHookConfig = {
+      url,
+      content_type: GitHookContentType.json,
+      insecure_ssl: GitHookUrlVerification.performed as any,
+    };
+
+    const pushGitHook: GitHookData = {
+      name: 'web',
+      events: [GithubEvent.push],
+      active: true,
+      config,
+    };
+
+    return pushGitHook;
   }
 
   getRefPath(): string {
@@ -244,57 +356,8 @@ abstract class GithubCommon extends GitBase implements GitApi {
     return GithubEvent[eventId];
   }
 
-  async get(uri: string = ''): Promise<Response> {
-    const url: string = uri.startsWith('http') ? uri : this.getBaseUrl() + uri;
-
-    return get(url)
-      .auth(this.config.username, this.config.password)
-      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
-      .accept('application/vnd.github.v3+json');
-  }
-
-  async delete(uri: string = ''): Promise<Response> {
-    const url: string = uri.startsWith('http') ? uri : this.getBaseUrl() + uri;
-
-    return httpDelete(url)
-      .auth(this.config.username, this.config.password)
-      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
-      .accept('application/vnd.github.v3+json');
-  }
-
-  async post(uri: string, data: any): Promise<Response> {
-    return post(this.getBaseUrl() + uri)
-      .auth(this.config.username, this.config.password)
-      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
-      .accept('application/vnd.github.v3+json')
-      .send(data);
-  }
-
-  async put(uri: string, data: any = {}): Promise<Response> {
-    return put(this.getBaseUrl() + uri)
-      .auth(this.config.username, this.config.password)
-      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
-      .accept('application/vnd.github.v3+json')
-      .send(data);
-  }
-
-  buildWebhookData({jenkinsUrl, webhookUrl}: {jenkinsUrl?: string, webhookUrl?: string}): GitHookData {
-    const url: string = webhookUrl ? webhookUrl : `${jenkinsUrl}/github-webhook/`;
-
-    const config: GitHookConfig = {
-      url,
-      content_type: GitHookContentType.json,
-      insecure_ssl: GitHookUrlVerification.performed as any,
-    };
-
-    const pushGitHook: GitHookData = {
-      name: 'web',
-      events: [GithubEvent.push],
-      active: true,
-      config,
-    };
-
-    return pushGitHook;
+  getConfig(): TypedGitRepoConfig {
+    return this.config
   }
 }
 
@@ -304,7 +367,15 @@ export class Github extends GithubCommon {
   }
 
   getBaseUrl(): string {
-    return `https://api.github.com/repos/${this.config.owner}/${this.config.repo}`;
+    return `https://api.github.com`;
+  }
+
+  getRepoUri(): string {
+    return `/repos/${this.config.owner}/${this.config.repo}`;
+  }
+
+  getRepoUrl(): string {
+    return `${this.getBaseUrl()}${this.getRepoUri()}`;
   }
 }
 
@@ -314,6 +385,14 @@ export class GithubEnterprise extends GithubCommon {
   }
 
   getBaseUrl(): string {
-    return `${this.config.protocol}://${this.config.host}/api/v3/repos/${this.config.owner}/${this.config.repo}`;
+    return `${this.config.protocol}://${this.config.host}/api/v3`;
+  }
+
+  getRepoUri(): string {
+    return `/repos/${this.config.owner}/${this.config.repo}`;
+  }
+
+  getRepoUrl(): string {
+    return `${this.getBaseUrl()}${this.getRepoUri()}`;
   }
 }

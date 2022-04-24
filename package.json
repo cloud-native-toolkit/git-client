@@ -1,14 +1,17 @@
 {
   "name": "@cloudnativetoolkit/git-client",
-  "version": "1.6.1",
+  "version": "1.7.0",
   "description": "",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
     "prepare": "npm run build",
     "build": "tsc -d",
-    "test": "jest --coverage",
-    "tdd": "jest --watch"
+    "test": "jest --coverage -c jest.config.unit.ts",
+    "test:unit": "jest --coverage -c jest.config.unit.ts",
+    "test:integration": "jest --coverage -c jest.config.integration.ts",
+    "test:create": "jest --coverage -c jest.config.create.ts",
+    "tdd": "jest --watch -c jest.config.unit.ts"
   },
   "repository": {
     "type": "git",
@@ -31,13 +34,18 @@
     "@types/superagent": "^4.1.13",
     "babel-jest": "^27.3.1",
     "debug": "^4.3.3",
+    "dotenv": "^16.0.0",
     "fs-extra": "^10.0.0",
     "jest": "^27.3.1",
     "js-yaml": "^4.1.0",
+    "ts-jest": "^27.1.4",
     "ts-node": "^10.4.0",
     "typescript": "^4.4.4"
   },
   "dependencies": {
+    "@octokit/core": "^3.6.0",
+    "@octokit/plugin-retry": "^3.0.9",
+    "@octokit/plugin-throttling": "^3.6.2",
     "lodash": "^4.17.21",
     "node-stream-zip": "^1.15.0",
     "optional-typescript": "^1.6.0",

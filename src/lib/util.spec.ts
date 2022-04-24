@@ -6,10 +6,11 @@ describe('util', () => {
       const protocol = 'https';
       const host = 'host';
       const owner = 'owner';
-      const repo = 'repo';
-      const url = `${protocol}://${host}/${owner}/${repo}`;
 
       test('then return repo config', async () => {
+        const repo = 'repo';
+        const url = `${protocol}://${host}/${owner}/${repo}`;
+
         expect(parseGitUrl(url)).toEqual({
           protocol,
           host,
@@ -18,6 +19,20 @@ describe('util', () => {
           url: url + '.git',
         });
       });
+
+      describe('and when url just contains the org', () => {
+        test('then return repo config', async () => {
+          const repo = null;
+          const url = `${protocol}://${host}/${owner}`;
+
+          expect(parseGitUrl(url)).toEqual({
+            protocol,
+            host,
+            owner,
+            url: url,
+          });
+        });
+      })
     });
     describe('when url has a branch', () => {
       const protocol = 'https';

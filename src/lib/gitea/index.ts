@@ -1,10 +1,10 @@
-import {get, post, Response} from 'superagent';
+import {delete as httpDelete, get, post, Response} from 'superagent';
 import * as _ from 'lodash';
 import * as fs from 'fs';
 import * as StreamZip from 'node-stream-zip';
 
 import {
-  CreatePullRequestOptions,
+  CreatePullRequestOptions, CreateRepoOptions,
   CreateWebhook, DeleteBranchOptions, GetPullRequestOptions,
   GitApi,
   GitEvent,
@@ -13,9 +13,10 @@ import {
   WebhookAlreadyExists
 } from '../git.api';
 import {GitBase} from '../git.base';
-import {TypedGitRepoConfig} from '../git.model';
+import {TypedGitRepoConfig, Webhook} from '../git.model';
 import {isResponseError} from '../../util/superagent-support';
 import first from '../../util/first';
+import {apiFromConfig} from '../util';
 
 
 enum GiteaEvent {
@@ -89,7 +90,11 @@ export class Gitea extends GitBase implements GitApi {
   }
 
   getBaseUrl(): string {
-    return `${this.config.protocol}://${this.config.host}/api/v1/repos/${this.config.owner}/${this.config.repo}`;
+    return `${this.config.protocol}://${this.config.host}/api/v1`;
+  }
+
+  getRepoUrl(): string {
+    return `${this.getBaseUrl()}/repos/${this.config.owner}/${this.config.repo}`;
   }
 
   // Gittea does not return the token with the GET
@@ -202,7 +207,7 @@ export class Gitea extends GitBase implements GitApi {
     try {
       // const token: string = await this.getToken();
 
-      const response: Response = await get(this.getBaseUrl())
+      const response: Response = await get(this.getRepoUrl())
         .auth(this.config.username, this.config.password)
         .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
         .accept('application/json');
@@ -222,7 +227,7 @@ export class Gitea extends GitBase implements GitApi {
       if( "http" === this.config.protocol.toLowerCase()){
         console.log("***** Warning! Creating webhooks for repo where urls start with http may not work.  If possible use https.");
       }
-      const response: Response = await post(this.getBaseUrl() + '/hooks')
+      const response: Response = await post(this.getRepoUrl() + '/hooks')
         .auth(this.config.username, this.config.password)
         .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
         .accept('application/json')
@@ -281,4 +286,69 @@ export class Gitea extends GitBase implements GitApi {
   getEventName(eventId: GitEvent): string {
     return GiteaEvent[eventId];
   }
+
+  getRepoApi({repo, url}: {repo?: string, url: string}): GitApi {
+    const newConfig = Object.assign({}, this.config, {repo, url})
+
+    return apiFromConfig(newConfig)
+  }
+
+  async getWebhooks(): Promise<Webhook[]> {
+    return get(`${this.getRepoUrl()}/hooks`)
+      .auth(this.config.username, this.config.password)
+      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
+      .accept('application/vnd.github.v3+json')
+      .then(res => res.body.map(hook => ({
+        id: hook.id,
+        name: hook.id,
+        active: hook.active,
+        events: hook.events,
+        config: {
+          content_type: hook.config?.content_type,
+          url: hook.config?.url,
+          insecure_ssl: 0
+        }
+      })))
+  }
+
+  async createRepo(options: CreateRepoOptions): Promise<GitApi> {
+    if (this.config.owner === this.config.username) {
+      return post(`${this.getBaseUrl()}/user/repos`)
+        .auth(this.config.username, this.config.password)
+        .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
+        .accept('application/vnd.github.v3+json')
+        .send({
+          name: options.name,
+          private: options.private
+        })
+        .then((res: Response) => this.getRepoApi({repo: options.name, url: res.body.html_url}));
+    } else {
+      return post(`${this.getBaseUrl()}/orgs/${this.config.owner}/repos`)
+        .auth(this.config.username, this.config.password)
+        .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
+        .accept('application/vnd.github.v3+json')
+        .send({
+          name: options.name,
+          private: options.private
+        })
+        .then((res: Response) => this.getRepoApi({repo: options.name, url: res.body.html_url}));
+    }
+  }
+
+  async deleteRepo(): Promise<GitApi> {
+    return httpDelete(this.getRepoUrl())
+      .auth(this.config.username, this.config.password)
+      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
+      .accept('application/vnd.github.v3+json')
+      .then((res: Response) => {
+        const url = this.config.url.replace(new RegExp('(.*)/.*', 'g'), '$1')
+
+        return this.getRepoApi({url})
+      });
+  }
+
+  getConfig(): TypedGitRepoConfig {
+    return this.config
+  }
+
 }

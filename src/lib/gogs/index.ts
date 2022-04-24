@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import * as StreamZip from 'node-stream-zip';
 
 import {
-  CreatePullRequestOptions,
+  CreatePullRequestOptions, CreateRepoOptions,
   CreateWebhook, DeleteBranchOptions, GetPullRequestOptions,
   GitApi,
   GitEvent,
@@ -13,7 +13,7 @@ import {
   WebhookAlreadyExists
 } from '../git.api';
 import {GitBase} from '../git.base';
-import {TypedGitRepoConfig} from '../git.model';
+import {TypedGitRepoConfig, Webhook} from '../git.model';
 import {isResponseError} from '../../util/superagent-support';
 import first from '../../util/first';
 
@@ -276,5 +276,22 @@ export class Gogs extends GitBase implements GitApi {
 
   getEventName(eventId: GitEvent): string {
     return GogsEvent[eventId];
+  }
+
+  createRepo(options: CreateRepoOptions): Promise<GitApi> {
+    throw new Error('Method not implemented.');
+  }
+
+  deleteRepo(): Promise<GitApi> {
+    throw new Error('Method not implemented.');
+  }
+
+  async getWebhooks(): Promise<Webhook[]> {
+
+    throw new Error('Method not implemented: getWebhooks')
+  }
+
+  getConfig(): TypedGitRepoConfig {
+    return this.config
   }
 }
