@@ -42,7 +42,7 @@
     "node-stream-zip": "^1.15.0",
     "optional-typescript": "^1.6.0",
     "rxjs": "^7.4.0",
-    "simple-git": "^2.47.0",
+    "simple-git": "^3.7.1",
     "superagent": "^6.1.0",
     "tslib": "^2.3.1",
     "typescript-ioc": "^3.2.2"
