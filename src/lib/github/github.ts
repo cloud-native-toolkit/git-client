@@ -170,40 +170,50 @@ abstract class GithubCommon extends GitBase implements GitApi {
     return this.exec(f, 'getPullRequest', {retryHandler, rateLimit: options.rateLimit});
   }
 
-  async createPullRequest(options: CreatePullRequestOptions, retryHandler?: EvaluateErrorForRetry): Promise<PullRequest> {
+  async createPullRequest({title, sourceBranch, targetBranch, maintainer_can_modify, draft = false, rateLimit}: CreatePullRequestOptions, retryHandler?: EvaluateErrorForRetry): Promise<PullRequest> {
 
     const f = async (): Promise<PullRequest> => {
       const response: Response = await this.post('/pulls', {
-        title: options.title,
-        head: options.sourceBranch,
-        base: options.targetBranch,
-        maintainer_can_modify: options.maintainer_can_modify,
-        draft: options.draft || false,
+        title,
+        head: sourceBranch,
+        base: targetBranch,
+        maintainer_can_modify,
+        draft,
       });
 
       return {
         pullNumber: response.body.number,
-        sourceBranch: options.sourceBranch,
-        targetBranch: options.targetBranch,
+        sourceBranch,
+        targetBranch,
       };
     };
 
-    return this.exec(f, 'createPullRequest', {retryHandler, rateLimit: options.rateLimit});
+    return this.exec(f, 'createPullRequest', {retryHandler, rateLimit});
   }
 
-  async mergePullRequest(options: MergePullRequestOptions, retryHandler?: EvaluateErrorForRetry): Promise<string> {
+  async mergePullRequest({pullNumber, title, message, method, rateLimit, delete_branch_after_merge = false}: MergePullRequestOptions, retryHandler?: EvaluateErrorForRetry): Promise<string> {
 
     const f = async (): Promise<string> => {
-      const response: Response = await this.put(`/pulls/${options.pullNumber}/merge`, {
-        commit_title: options.title,
-        commit_message: options.message,
-        merge_method: options.method,
+      const response: Response = await this.put(`/pulls/${pullNumber}/merge`, {
+        commit_title: title,
+        commit_message: message,
+        merge_method: method,
       });
 
       return response.body.message;
     }
 
-    return this.exec(f, 'mergePullRequest', {retryHandler, rateLimit: options.rateLimit});
+    const result = this.exec(f, 'mergePullRequest', {retryHandler, rateLimit});
+
+    if (delete_branch_after_merge) {
+      const {sourceBranch} = await this.getPullRequest({pullNumber}).catch(() => ({sourceBranch: ''}));
+
+      if (sourceBranch) {
+        await this.deleteBranch({branch: sourceBranch}).catch(() => console.log('Unable to delete branch: ' + sourceBranch))
+      }
+    }
+
+    return result;
   }
 
   async updatePullRequestBranch(options: UpdatePullRequestBranchOptions, retryHandler?: EvaluateErrorForRetry): Promise<string> {

@@ -105,6 +105,7 @@ export interface MergePullRequestOptions extends BaseOptions {
   resolver?: MergeResolver;
   title?: string;
   message?: string;
+  delete_branch_after_merge?: boolean;
 }
 
 export interface UpdateAndMergePullRequestOptions extends MergePullRequestOptions, BaseOptions {
@@ -124,6 +125,7 @@ export interface PullRequest {
   pullNumber: number;
   sourceBranch: string;
   targetBranch: string;
+  mergeStatus?: string;
 }
 
 export interface LocalGitConfig {

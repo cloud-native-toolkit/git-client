@@ -1,4 +1,7 @@
-import {CreateWebhook, GitApi} from './git.api';
+import {promises} from 'fs';
+import {SimpleGit} from 'simple-git';
+
+import {CreateWebhook, GitApi, PullRequest} from './git.api';
 import {apiFromUrl} from './util';
 import {GitHost, Webhook} from './git.model';
 
@@ -87,7 +90,7 @@ describeTestCases('given $name', ({name, baseUrl, org, username, password} : Cas
 
     repo = `test-${makeId(10)}`
     console.log('Creating repo: ', repo)
-    return gitApi.createRepo({name: repo, privateRepo: false})
+    return gitApi.createRepo({name: repo, privateRepo: false, autoInit: true})
       .then((result: GitApi) => {
         console.log('Got api:', result.getConfig().url)
         classUnderTest = result
@@ -97,7 +100,7 @@ describeTestCases('given $name', ({name, baseUrl, org, username, password} : Cas
   afterAll(async () => {
     if (classUnderTest) {
       console.log('Deleting repo: ', classUnderTest.getConfig().url)
-      await classUnderTest.deleteRepo();
+      // await classUnderTest.deleteRepo();
     }
   })
 
@@ -119,6 +122,52 @@ describeTestCases('given $name', ({name, baseUrl, org, username, password} : Cas
         const webhooks: Webhook[] = await classUnderTest.getWebhooks();
         expect(webhooks.length).toEqual(1);
       });
+    });
+  });
+
+  describe('given createPullRequest()', () => {
+    describe('when called', () => {
+      const baseDir = process.cwd()
+
+      afterEach(async () => {
+        const repo = classUnderTest.getConfig().repo
+
+        await promises.rmdir(`${baseDir}/${repo}`, {recursive: true})
+      })
+
+      test('then create the pr', async () => {
+        const simpleGit: SimpleGit = await classUnderTest.clone(classUnderTest.getConfig().repo, {baseDir, userConfig: {email: 'test@email.com', name: 'test'}})
+
+        const defaultBranch: string = await simpleGit.revparse(['--abbrev-ref', 'HEAD'])
+
+        const branchName = `test-${makeId(8)}`
+        await simpleGit.checkoutBranch(branchName, `origin/${defaultBranch}`)
+
+        const filename = `${baseDir}/${classUnderTest.getConfig().repo}/README.md`
+        await promises.appendFile(filename, '\ntest')
+
+        await simpleGit.add('README.md')
+
+        await simpleGit.commit('Updates readme')
+
+        console.log('Pushing branch: ', branchName)
+        await simpleGit.push(`origin`, branchName, ['-u'])
+
+        console.log('Creating pull request', branchName)
+        const {pullNumber} = await classUnderTest.createPullRequest({
+          title: 'test',
+          sourceBranch: branchName,
+          targetBranch: defaultBranch
+        })
+
+        console.log('Getting pull request', pullNumber)
+        const result: PullRequest = await classUnderTest.getPullRequest({pullNumber})
+
+        expect(result.pullNumber).toEqual(pullNumber)
+
+        console.log('Merging pull request', pullNumber)
+        await classUnderTest.mergePullRequest({pullNumber, method: 'squash', delete_branch_after_merge: true})
+      }, 30000);
     });
   });
 })

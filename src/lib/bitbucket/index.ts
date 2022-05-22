@@ -76,22 +76,62 @@ export class Bitbucket extends GitBase implements GitApi {
   }
 
   async deleteBranch({branch}: DeleteBranchOptions): Promise<string> {
-    throw new Error('Method not implemented: deleteBranch')
+    return deleteUrl(`${this.getRepoUrl()}/refs/branches/${branch}`)
+      .auth(this.config.username, this.config.password)
+      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
+      .accept('application/json')
+      .then(() => 'success')
   }
 
-  async getPullRequest(options: GetPullRequestOptions): Promise<PullRequest> {
-
-    throw new Error('Method not implemented: getPullRequest')
+  async getPullRequest({pullNumber}: GetPullRequestOptions): Promise<PullRequest> {
+    return get(`${this.getRepoUrl()}/pullrequests/${pullNumber}`)
+      .auth(this.config.username, this.config.password)
+      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
+      .accept('application/json')
+      .then(res => ({
+        pullNumber: res.body.id,
+        sourceBranch: res.body.source.branch.name,
+        targetBranch: res.body.destination.branch.name
+      }))
   }
 
-  async createPullRequest(options: CreatePullRequestOptions): Promise<PullRequest> {
-
-    throw new Error('Method not implemented: createPullRequest')
+  async createPullRequest({title, sourceBranch, targetBranch}: CreatePullRequestOptions): Promise<PullRequest> {
+    return post(`${this.getRepoUrl()}/pullrequests`)
+      .auth(this.config.username, this.config.password)
+      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
+      .accept('application/json')
+      .send({
+        title,
+        source: {
+          branch: {
+            name: sourceBranch
+          }
+        },
+        destination: {
+          branch: {
+            name: targetBranch
+          }
+        }
+      })
+      .then(res => ({
+        pullNumber: res.body.id,
+        sourceBranch,
+        targetBranch
+      }))
   }
 
-  async mergePullRequest(options: MergePullRequestOptions): Promise<string> {
-
-    throw new Error('Method not implemented: mergePullRequest')
+  async mergePullRequest({pullNumber, method, message, title, delete_branch_after_merge}: MergePullRequestOptions): Promise<string> {
+    return post(`${this.getRepoUrl()}/pullrequests/${pullNumber}/merge`)
+      .auth(this.config.username, this.config.password)
+      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
+      .accept('application/json')
+      .send({
+        type: 'git',
+        close_source_branch: delete_branch_after_merge,
+        merge_strategy: method === 'merge' ? 'merge_commit' : method === 'squash' ? 'squash' : 'fast_forward',
+        message
+      })
+      .then(() => 'success')
   }
 
   async updatePullRequestBranch(options: UpdatePullRequestBranchOptions): Promise<string> {

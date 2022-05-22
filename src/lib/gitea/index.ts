@@ -124,27 +124,62 @@ export class Gitea extends GitBase implements GitApi {
   // }
 
   async deleteBranch({branch}: DeleteBranchOptions): Promise<string> {
-    throw new Error('Method not implemented: deleteBranch')
+    return httpDelete(`${this.getRepoUrl()}/branches/${branch}`)
+      .auth(this.config.username, this.config.password)
+      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
+      .accept('application/vnd.github.v3+json')
+      .then(() => 'success')
   }
 
-  async getPullRequest(options: GetPullRequestOptions): Promise<PullRequest> {
-
-    throw new Error('Method not implemented: getPullRequest')
+  async getPullRequest({pullNumber}: GetPullRequestOptions): Promise<PullRequest> {
+    return get(`${this.getRepoUrl()}/pulls/${pullNumber}`)
+      .auth(this.config.username, this.config.password)
+      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
+      .accept('application/vnd.github.v3+json')
+      .then(res => ({
+        pullNumber: res.body.number,
+        sourceBranch: res.body.head.ref,
+        targetBranch: res.body.base.ref,
+      }))
   }
 
-  async createPullRequest(options: CreatePullRequestOptions): Promise<PullRequest> {
-
-    throw new Error('Method not implemented: createPullRequest')
+  async createPullRequest({title, sourceBranch, targetBranch}: CreatePullRequestOptions): Promise<PullRequest> {
+    return post(`${this.getRepoUrl()}/pulls`)
+      .auth(this.config.username, this.config.password)
+      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
+      .accept('application/vnd.github.v3+json')
+      .send({
+        title,
+        head: sourceBranch,
+        base: targetBranch,
+      })
+      .then(res => ({
+        pullNumber: res.body.number,
+        sourceBranch,
+        targetBranch
+      }))
   }
 
-  async mergePullRequest(options: MergePullRequestOptions): Promise<string> {
-
-    throw new Error('Method not implemented: mergePullRequest')
+  async mergePullRequest({pullNumber, method, resolver, title, message, delete_branch_after_merge = false}: MergePullRequestOptions): Promise<string> {
+    return post(`${this.getRepoUrl()}/pulls/${pullNumber}/merge`)
+      .auth(this.config.username, this.config.password)
+      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
+      .accept('application/vnd.github.v3+json')
+      .send({
+        Do: method,
+        MergeTitleField: title,
+        MergeMessageField: message,
+        delete_branch_after_merge
+      })
+      .then(() => 'success')
   }
 
-  async updatePullRequestBranch(options: UpdatePullRequestBranchOptions): Promise<string> {
-
-    throw new Error('Method not implemented: updatePullRequestBranch')
+  async updatePullRequestBranch({pullNumber}: UpdatePullRequestBranchOptions): Promise<string> {
+    return post(`${this.getRepoUrl()}/pulls/${pullNumber}/update?style=rebase`)
+      .auth(this.config.username, this.config.password)
+      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
+      .accept('application/vnd.github.v3+json')
+      .then(() => 'success')
   }
 
   async listFiles(): Promise<Array<{path: string, url?: string, contents?: string}>> {
