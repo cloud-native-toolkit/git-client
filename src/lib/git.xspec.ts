@@ -93,7 +93,7 @@ describeTestCases('given $name', ({name, baseUrl, org, username, password} : Cas
       test('then should create a repo', async () => {
 
         try {
-          const repoApi: GitApi = await classUnderTest.createRepo({name: repo, private: true})
+          const repoApi: GitApi = await classUnderTest.createRepo({name: repo, privateRepo: true})
 
           console.log('Got repo: ', repoApi.getConfig().repo)
 

@@ -87,7 +87,7 @@ describeTestCases('given $name', ({name, baseUrl, org, username, password} : Cas
 
     repo = `test-${makeId(10)}`
     console.log('Creating repo: ', repo)
-    return gitApi.createRepo({name: repo, private: false})
+    return gitApi.createRepo({name: repo, privateRepo: false})
       .then((result: GitApi) => {
         console.log('Got api:', result.getConfig().url)
         classUnderTest = result

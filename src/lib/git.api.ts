@@ -157,7 +157,8 @@ export interface DeleteBranchOptions {
 
 export interface CreateRepoOptions {
   name: string;
-  private?: boolean;
+  autoInit?: boolean;
+  privateRepo?: boolean;
 }
 
 export abstract class GitApi extends LocalGitApi {

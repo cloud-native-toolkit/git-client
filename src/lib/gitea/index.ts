@@ -311,27 +311,29 @@ export class Gitea extends GitBase implements GitApi {
       })))
   }
 
-  async createRepo(options: CreateRepoOptions): Promise<GitApi> {
+  async createRepo({name, privateRepo = false, autoInit = true}: CreateRepoOptions): Promise<GitApi> {
     if (this.config.owner === this.config.username) {
       return post(`${this.getBaseUrl()}/user/repos`)
         .auth(this.config.username, this.config.password)
         .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
         .accept('application/vnd.github.v3+json')
         .send({
-          name: options.name,
-          private: options.private
+          name: name,
+          private: privateRepo,
+          auto_init: autoInit
         })
-        .then((res: Response) => this.getRepoApi({repo: options.name, url: res.body.html_url}));
+        .then((res: Response) => this.getRepoApi({repo: name, url: res.body.html_url}));
     } else {
       return post(`${this.getBaseUrl()}/orgs/${this.config.owner}/repos`)
         .auth(this.config.username, this.config.password)
         .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
         .accept('application/vnd.github.v3+json')
         .send({
-          name: options.name,
-          private: options.private
+          name: name,
+          private: privateRepo,
+          auto_init: autoInit
         })
-        .then((res: Response) => this.getRepoApi({repo: options.name, url: res.body.html_url}));
+        .then((res: Response) => this.getRepoApi({repo: name, url: res.body.html_url}));
     }
   }
 

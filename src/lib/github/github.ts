@@ -251,24 +251,25 @@ abstract class GithubCommon extends GitBase implements GitApi {
       .send(data);
   }
 
-  async createRepo(options: CreateRepoOptions): Promise<GitApi> {
-    console.log(`Creating repo: ${this.config.owner}/${options.name}`)
+  async createRepo({name, privateRepo = false, autoInit = true}: CreateRepoOptions): Promise<GitApi> {
+    console.log(`Creating repo: ${this.config.owner}/${name}`)
 
     if (this.config.owner === this.config.username) {
       return this.octokit
         .request('POST /user/repos', {
-          name: options.name,
-          private: !!options.private
+          name: name,
+          auto_init: autoInit,
+          private: !!privateRepo
         })
-        .then(res => this.getRepoApi({repo: options.name, url: res.url}))
+        .then(res => this.getRepoApi({repo: name, url: res.url}))
     } else {
       return this.octokit
         .request('POST /orgs/{org}/repos', {
           org: this.config.owner,
-          name: options.name,
-          private: !!options.private
+          name: name,
+          private: !!privateRepo
         })
-        .then(res => this.getRepoApi({repo: options.name, url: res.url}))
+        .then(res => this.getRepoApi({repo: name, url: res.url}))
     }
   }
 
