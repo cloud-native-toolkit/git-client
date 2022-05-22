@@ -210,16 +210,34 @@ export class Bitbucket extends GitBase implements GitApi {
     return BitbucketEvent[eventId];
   }
 
-  createRepo(options: CreateRepoOptions): Promise<GitApi> {
-    return post(`${this.getBaseUrl()}/repositories/${this.config.owner}/${options.name}`)
+  async createRepo({name, privateRepo = false, autoInit = true}: CreateRepoOptions): Promise<GitApi> {
+    const repoApi: Bitbucket = await post(`${this.getBaseUrl()}/repositories/${this.config.owner}/${name}`)
       .set('Content-Type', 'application/json')
       .auth(this.config.username, this.config.password)
       .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
       .accept('application/json')
       .send({scm: 'git'})
       .then(res => {
-        return this.getRepoApi({repo: options.name, url: res.body.links.self.href})
-      })
+        return this.getRepoApi({repo: name, url: res.body.links.self.href})
+      }) as Bitbucket
+
+    if (autoInit) {
+      await repoApi.createFile('README.md', `# ${name}`).catch(err => console.log('Error:', err))
+    }
+
+    return repoApi;
+  }
+
+  async createFile(filename: string, contents: string): Promise<GitApi> {
+    const filepath = filename.startsWith('/') ? filename : `/${filename}`
+
+    await post(`${this.getRepoUrl()}/src`)
+      .set('Content-Type', 'multipart/form-data')
+      .auth(this.config.username, this.config.password)
+      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
+      .field(filepath, contents)
+
+    return this;
   }
 
   getRepoApi({repo, url}: {repo?: string, url: string}): GitApi {

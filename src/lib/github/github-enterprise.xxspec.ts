@@ -61,7 +61,7 @@ maybe('github-enterprise', () => {
         })
 
         test('then should create the repository', async () => {
-          const repoApi: GitApi = await classUnderTest.createRepo({name: repo, private: false})
+          const repoApi: GitApi = await classUnderTest.createRepo({name: repo, privateRepo: false})
 
           const type: GitHost = repoApi.getType()
           expect(type).toEqual(GitHost.ghe)

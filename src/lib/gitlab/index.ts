@@ -244,16 +244,21 @@ export class Gitlab extends GitBase implements GitApi {
     return GitlabEvent[eventId];
   }
 
-  async createRepo(options: CreateRepoOptions): Promise<GitApi> {
+  async createRepo({name, privateRepo = false, autoInit = true}: CreateRepoOptions): Promise<GitApi> {
+    const payload = Object.assign({
+      name: name,
+      visibility: privateRepo ? 'private' : 'public',
+      initialize_with_readme: autoInit
+    }, autoInit ? {
+      default_branch: 'main'
+    } : {})
+
     if (this.config.owner === this.config.username) {
       return post(this.getBaseUrl())
         .set('Private-Token', this.config.password)
         .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
         .accept('application/json')
-        .send({
-          name: options.name,
-          visibility: options.private ? 'private' : 'public'
-        })
+        .send(payload)
         .then(res => {
           return this.getRepoApi({repo: res.body.name, url: res.body.http_url_to_repo})
         })
@@ -276,11 +281,7 @@ export class Gitlab extends GitBase implements GitApi {
         .set('Private-Token', this.config.password)
         .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
         .accept('application/json')
-        .send({
-          name: options.name,
-          namespace_id: namespaceId,
-          visibility: options.private ? 'private' : 'public'
-        })
+        .send(Object.assign({}, payload, {namespace_id: namespaceId}))
         .then(async res => {
           return this.getRepoApi({repo: res.body.name, url: res.body.http_url_to_repo})
         })
