@@ -1,12 +1,13 @@
-import {AuthGitRepoConfig, GitHost, GitRepoConfig, TypedGitRepoConfig} from './git.model';
+import * as _ from 'lodash';
+import {get, Response} from 'superagent';
+
+import {AuthGitRepoConfig, GitHost, GitRepoConfig, InvalidGitUrl, TypedGitRepoConfig} from './git.model';
 import {Github, GithubEnterprise} from './github';
 import {Gitlab} from './gitlab';
 import {Gogs} from './gogs';
 import {Gitea} from './gitea';
 import {Bitbucket} from './bitbucket';
 import {GitApi} from './git.api';
-import * as _ from 'lodash';
-import {get, Response} from 'superagent';
 
 const GIT_URL_PATTERNS = {
   'http': '(https{0,1})://([^/]*)/([^/]*)/{0,1}([^#]*)#{0,1}(.*)',
@@ -26,6 +27,12 @@ const API_FACTORIES = [
   return result;
 }, {})
 
+
+export async function apiFromPartialConfig({host, org, repo, branch}: {host: string, org: string, repo?: string, branch?: string}, credentials: {username: string, password: string}): Promise<GitApi> {
+  const url = repo ? `https://${host}/${org}/${repo}` : `https://${host}/${org}`
+
+  return apiFromUrl(url, credentials, branch)
+}
 
 export async function apiFromUrl(repoUrl: string, credentials: {username: string, password: string}, branch?: string): Promise<GitApi> {
   const config: TypedGitRepoConfig = await gitRepoConfigFromUrl(repoUrl, credentials, branch);
@@ -101,13 +108,13 @@ export function parseGitUrl(url: string): GitRepoConfig {
   const pattern = GIT_URL_PATTERNS[url.substring(0, 4)];
 
   if (!pattern) {
-    throw new Error(`invalid git url: ${url}`);
+    throw new InvalidGitUrl(url);
   }
 
   const results = new RegExp(pattern, 'gi').exec(url);
 
   if (!results || results.length < 4) {
-    throw new Error(`invalid git url: ${url}`);
+    throw new InvalidGitUrl(url);
   }
 
   const protocol = results[1] === 'git@' ? 'https' : results[1];

@@ -13,6 +13,21 @@
     "test:create": "jest --coverage -c jest.config.create.ts",
     "tdd": "jest --watch -c jest.config.unit.ts"
   },
+  "bin": {
+    "gitu": "dist/script.js"
+  },
+  "pkg": {
+    "scripts": "dist/script.js",
+    "assets": "dist/**/*",
+    "targets": [
+      "node16-linux-x64",
+      "node16-macos-x64",
+      "node16-alpine-x64",
+      "node16-linux-arm64",
+      "node16-macos-arm64",
+      "node16-alpine-arm64"
+    ]
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/cloud-native-toolkit/git-client.git"
@@ -53,6 +68,7 @@
     "simple-git": "^3.7.1",
     "superagent": "^6.1.0",
     "tslib": "^2.3.1",
-    "typescript-ioc": "^3.2.2"
+    "typescript-ioc": "^3.2.2",
+    "yargs": "^17.5.1"
   }
 }

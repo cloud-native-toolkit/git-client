@@ -11,7 +11,7 @@ import {
   WebhookAlreadyExists
 } from '../git.api';
 import {GitBase} from '../git.base';
-import {TypedGitRepoConfig, Webhook} from '../git.model';
+import {TypedGitRepoConfig, UserNotFound, Webhook} from '../git.model';
 import {isResponseError} from '../../util/superagent-support';
 import {apiFromConfig} from '../util';
 import first from '../../util/first';
@@ -320,7 +320,7 @@ export class Gitlab extends GitBase implements GitApi {
     } : {})
 
     if (this.config.owner === this.config.username) {
-      return post(this.getBaseUrl())
+      return post(`${this.getBaseUrl()}/projects`)
         .set('Private-Token', this.config.password)
         .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
         .accept('application/json')

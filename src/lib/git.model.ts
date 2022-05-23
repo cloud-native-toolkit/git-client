@@ -73,3 +73,44 @@ export interface Webhook {
     insecure_ssl: number;
   }
 }
+
+export enum ErrorType {
+  insufficientPermissions = 'insufficientPermissions',
+  badCredentials = 'badCredentials',
+  userNotFound = 'userNotFound',
+  invalidGitUrl = 'invalidGitUrl'
+}
+
+export class GitError extends Error {
+  protected constructor(public readonly type: ErrorType, message: string, public readonly gitHost: GitHost, public readonly error?: Error) {
+    super(message);
+  }
+}
+
+export const isGitError = (err: any): err is GitError => {
+  return !!err && !!(err as GitError).type
+}
+
+export class InsufficientPermissions extends GitError {
+  constructor(operation: string, gitHost: GitHost, error?: Error) {
+    super(ErrorType.insufficientPermissions, `Insufficient permissions for ${operation}`, gitHost, error);
+  }
+}
+
+export class BadCredentials extends GitError {
+  constructor(operation: string, gitHost: GitHost, error?: Error) {
+    super(ErrorType.badCredentials, `Bad credentials for ${operation}`, gitHost, error);
+  }
+}
+
+export class UserNotFound extends GitError {
+  constructor(operation: string, gitHost: GitHost, error?: Error) {
+    super(ErrorType.userNotFound, `User not found`, gitHost, error);
+  }
+}
+
+export class InvalidGitUrl extends GitError {
+  constructor(context: string, gitHost?: GitHost, error?: Error) {
+    super(ErrorType.invalidGitUrl, `Invalid git url: ${context}`, gitHost, error);
+  }
+}

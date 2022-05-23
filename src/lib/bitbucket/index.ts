@@ -9,7 +9,7 @@ import {
   UnknownWebhookError, UpdatePullRequestBranchOptions,
   WebhookAlreadyExists
 } from '../git.api';
-import {TypedGitRepoConfig, Webhook} from '../git.model';
+import {BadCredentials, TypedGitRepoConfig, Webhook} from '../git.model';
 import {GitBase} from '../git.base';
 import {isResponseError} from '../../util/superagent-support';
 import {apiFromConfig} from '../util';
@@ -258,7 +258,16 @@ export class Bitbucket extends GitBase implements GitApi {
       .accept('application/json')
       .send({scm: 'git'})
       .then(res => {
-        return this.getRepoApi({repo: name, url: res.body.links.self.href})
+        const url = res.body.links.html.href
+
+        return this.getRepoApi({repo: name, url})
+      })
+      .catch(err => {
+        if (/Unauthorized/.test(err.message)) {
+          throw new BadCredentials('createRepo', this.config.type, err)
+        }
+
+        throw err
       }) as Bitbucket
 
     if (autoInit) {
@@ -295,6 +304,13 @@ export class Bitbucket extends GitBase implements GitApi {
         const url = this.config.url.replace(new RegExp('(.*)/.*', 'g'), '$1')
 
         return this.getRepoApi({url})
+      })
+      .catch(err => {
+        if (/Unauthorized/.test(err.message)) {
+          throw new BadCredentials('deleteRepo', this.config.type, err)
+        }
+
+        throw err
       })
   }
 }

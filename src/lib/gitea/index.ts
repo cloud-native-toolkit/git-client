@@ -13,7 +13,7 @@ import {
   WebhookAlreadyExists
 } from '../git.api';
 import {GitBase} from '../git.base';
-import {TypedGitRepoConfig, Webhook} from '../git.model';
+import {BadCredentials, TypedGitRepoConfig, Webhook} from '../git.model';
 import {isResponseError} from '../../util/superagent-support';
 import first from '../../util/first';
 import {apiFromConfig} from '../util';
@@ -347,6 +347,14 @@ export class Gitea extends GitBase implements GitApi {
   }
 
   async createRepo({name, privateRepo = false, autoInit = true}: CreateRepoOptions): Promise<GitApi> {
+    const handleError = (err) => {
+      if (/Unauthorized/.test(err.message)) {
+        throw new BadCredentials('createRepo', this.config.type, err)
+      }
+
+      throw err
+    }
+
     if (this.config.owner === this.config.username) {
       return post(`${this.getBaseUrl()}/user/repos`)
         .auth(this.config.username, this.config.password)
@@ -357,7 +365,8 @@ export class Gitea extends GitBase implements GitApi {
           private: privateRepo,
           auto_init: autoInit
         })
-        .then((res: Response) => this.getRepoApi({repo: name, url: res.body.html_url}));
+        .then((res: Response) => this.getRepoApi({repo: name, url: res.body.html_url}))
+        .catch(handleError)
     } else {
       return post(`${this.getBaseUrl()}/orgs/${this.config.owner}/repos`)
         .auth(this.config.username, this.config.password)
@@ -368,7 +377,8 @@ export class Gitea extends GitBase implements GitApi {
           private: privateRepo,
           auto_init: autoInit
         })
-        .then((res: Response) => this.getRepoApi({repo: name, url: res.body.html_url}));
+        .then((res: Response) => this.getRepoApi({repo: name, url: res.body.html_url}))
+        .catch(handleError)
     }
   }
 

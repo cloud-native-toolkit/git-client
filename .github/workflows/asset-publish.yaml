@@ -1,0 +1,97 @@
+name: Asset publish
+
+on:
+  release:
+    types:
+      - published
+
+jobs:
+  publish-assets:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '16'
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Build
+        run: npm ci && npm run build
+
+      - name: Install pkg
+        run: npm install -g pkg
+
+      - name: Build Asset
+        run: pkg -o gitu --options no-warnings .
+
+      - name: Upload Linux x64 cli
+        id: upload-linux-cli
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ./gitu-linux-x64
+          asset_name: gitu-linux-x64
+          asset_content_type: application/octet-stream
+
+      - name: Upload Linux arm64 cli
+        id: upload-linux-cli
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ./gitu-linux-arm64
+          asset_name: gitu-linux-arm64
+          asset_content_type: application/octet-stream
+
+      - name: Upload MacOS x64 cli
+        id: upload-macos-cli
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ./gitu-macos-x64
+          asset_name: gitu-macos-x64
+          asset_content_type: application/octet-stream
+
+      - name: Upload MacOS arm64 cli
+        id: upload-macos-cli
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ./gitu-macos-arm64
+          asset_name: gitu-macos-arm64
+          asset_content_type: application/octet-stream
+
+      - name: Upload Alpine x64 cli
+        id: upload-alpine-cli
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ./gitu-alpine-x64
+          asset_name: gitu-alpine-x64
+          asset_content_type: application/octet-stream
+
+      - name: Upload Alpine arm64 cli
+        id: upload-alpine-cli
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ./gitu-alpine-arm64
+          asset_name: gitu-alpine-arm64
+          asset_content_type: application/octet-stream

@@ -11,7 +11,14 @@ import {
   UnknownWebhookError, UpdatePullRequestBranchOptions,
   WebhookAlreadyExists
 } from '../git.api';
-import {GitHookConfig, GitHookContentType, TypedGitRepoConfig, Webhook} from '../git.model';
+import {
+  BadCredentials,
+  GitHookConfig,
+  GitHookContentType,
+  InsufficientPermissions,
+  TypedGitRepoConfig,
+  Webhook
+} from '../git.model';
 import {GitBase} from '../git.base';
 import {isResponseError, ResponseError} from '../../util/superagent-support';
 import {timer} from '../timer';
@@ -262,7 +269,13 @@ abstract class GithubCommon extends GitBase implements GitApi {
   }
 
   async createRepo({name, privateRepo = false, autoInit = true}: CreateRepoOptions): Promise<GitApi> {
-    console.log(`Creating repo: ${this.config.owner}/${name}`)
+    const errorHandler = (err) => {
+      if (/Bad credentials/.test(err.message)) {
+        throw new BadCredentials('deleteRepo', this.config.type, err)
+      } else {
+        throw err;
+      }
+    }
 
     if (this.config.owner === this.config.username) {
       return this.octokit
@@ -271,7 +284,8 @@ abstract class GithubCommon extends GitBase implements GitApi {
           auto_init: autoInit,
           private: !!privateRepo
         })
-        .then(res => this.getRepoApi({repo: name, url: res.url}))
+        .then(res => this.getRepoApi({repo: name, url: res.data.clone_url}))
+        .catch(errorHandler)
     } else {
       return this.octokit
         .request('POST /orgs/{org}/repos', {
@@ -280,6 +294,7 @@ abstract class GithubCommon extends GitBase implements GitApi {
           private: !!privateRepo
         })
         .then(res => this.getRepoApi({repo: name, url: res.url}))
+        .catch(errorHandler)
     }
   }
 
@@ -293,6 +308,15 @@ abstract class GithubCommon extends GitBase implements GitApi {
         const url = this.config.url.replace(new RegExp('(.*)/.*', 'g'), '$1')
 
         return this.getRepoApi({url})
+      })
+      .catch(err => {
+        if (/Must have admin rights to Repository/.test(err.message)) {
+          throw new InsufficientPermissions('deleteRepo', this.config.type, err)
+        } else if (/Bad credentials/.test(err.message)) {
+          throw new BadCredentials('deleteRepo', this.config.type, err)
+        } else {
+          throw err;
+        }
       })
   }
 
