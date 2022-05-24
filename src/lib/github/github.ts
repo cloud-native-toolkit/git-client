@@ -293,7 +293,7 @@ abstract class GithubCommon extends GitBase implements GitApi {
           name: name,
           private: !!privateRepo
         })
-        .then(res => this.getRepoApi({repo: name, url: res.url}))
+        .then(res => this.getRepoApi({repo: name, url: res.data.clone_url}))
         .catch(errorHandler)
     }
   }
