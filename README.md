@@ -39,7 +39,7 @@ The exposed APIs are defined in `lib/git.api.ts` in the `GitApi` abstract class.
 
 ### Command-line
 
-The library can also be accessed from the command-line as a series of commands. Currently two commands are available:
+The library can also be accessed from the command-line as a series of commands. The cli can either be accessed by installing the module globally or by downloading the appropriate binary for your environment. Currently, two commands are available:
 
 #### create repo
 
