@@ -37,6 +37,18 @@ The exposed APIs are defined in `lib/git.api.ts` in the `GitApi` abstract class.
 - `updatePullRequestBranch()` - updates the pull request with the latest from the target branch
 - `clone()` - clones the repository to the local file system
 
+### Command-line
+
+The library can also be accessed from the command-line as a series of commands. Currently two commands are available:
+
+#### create repo
+
+`gitu create [repo] -h host -o org -u username`
+
+#### delete repo
+
+`gitu delete repoUrl`
+
 ## Testing
 
 The repository provides unit tests and integration tests. The unit tests can be run independently of any Git hosts. The integration tests require configuration, including credentials, in order to run.
