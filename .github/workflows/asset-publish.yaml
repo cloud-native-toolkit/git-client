@@ -31,7 +31,7 @@ jobs:
         run: pkg -o gitu --options no-warnings .
 
       - name: Upload Linux x64 cli
-        id: upload-linux-cli
+        id: upload-linux-x64-cli
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -42,7 +42,7 @@ jobs:
           asset_content_type: application/octet-stream
 
       - name: Upload Linux arm64 cli
-        id: upload-linux-cli
+        id: upload-linux-arm64-cli
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -53,7 +53,7 @@ jobs:
           asset_content_type: application/octet-stream
 
       - name: Upload MacOS x64 cli
-        id: upload-macos-cli
+        id: upload-macos-x64-cli
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -64,7 +64,7 @@ jobs:
           asset_content_type: application/octet-stream
 
       - name: Upload MacOS arm64 cli
-        id: upload-macos-cli
+        id: upload-macos-arm64-cli
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -75,7 +75,7 @@ jobs:
           asset_content_type: application/octet-stream
 
       - name: Upload Alpine x64 cli
-        id: upload-alpine-cli
+        id: upload-alpine-x64-cli
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -86,7 +86,7 @@ jobs:
           asset_content_type: application/octet-stream
 
       - name: Upload Alpine arm64 cli
-        id: upload-alpine-cli
+        id: upload-alpine-arm64-cli
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
