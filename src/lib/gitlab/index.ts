@@ -11,7 +11,7 @@ import {
   WebhookAlreadyExists
 } from '../git.api';
 import {GitBase} from '../git.base';
-import {TypedGitRepoConfig, UserNotFound, Webhook} from '../git.model';
+import {GitRepo, RepoNotFound, TypedGitRepoConfig, UserNotFound, Webhook} from '../git.model';
 import {isResponseError} from '../../util/superagent-support';
 import {apiFromConfig} from '../util';
 import first from '../../util/first';
@@ -386,4 +386,23 @@ export class Gitlab extends GitBase implements GitApi {
     return apiFromConfig(newConfig)
   }
 
+  async getRepoInfo(): Promise<GitRepo> {
+    return get(this.getRepoUrl())
+      .set('Private-Token', this.config.password)
+      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
+      .accept('application/json')
+      .then(res => ({
+        slug: res.body.path_with_namespace,
+        name: res.body.path,
+        description: res.body.description,
+        is_private: res.body.visibility === 'private'
+      }))
+      .catch(err => {
+        if (err.response.status === 404) {
+          throw new RepoNotFound(this.config.url)
+        }
+
+        throw err
+      })
+  }
 }

@@ -1,6 +1,6 @@
 import {CreateWebhook, GitApi} from './git.api';
 import {apiFromUrl} from './util';
-import {GitHost, Webhook} from './git.model';
+import {GitHost, GitRepo, Webhook} from './git.model';
 
 const asKey = (name: string, key: string): string => {
   return `${name}_${key}`.toUpperCase()
@@ -92,15 +92,23 @@ describeTestCases('given $name', ({name, baseUrl, org, username, password} : Cas
     describe('when called', () => {
       test('then should create a repo', async () => {
 
+        let repoApi: GitApi;
         try {
-          const repoApi: GitApi = await classUnderTest.createRepo({name: repo, privateRepo: true})
+          repoApi = await classUnderTest.createRepo({name: repo, privateRepo: true})
 
           console.log('Got repo: ', repoApi.getConfig().repo)
 
-          await repoApi.deleteRepo();
+          const repoInfo: GitRepo = await repoApi.getRepoInfo()
+
+          expect(repoInfo.name).toEqual(repo)
+
         } catch (error) {
           console.log('Error: ', error)
           expect(error).toBeUndefined()
+        } finally {
+          if (repoApi) {
+            await repoApi.deleteRepo().catch(err => console.log('Error deleting repo', err));
+          }
         }
       }, 30000);
     });

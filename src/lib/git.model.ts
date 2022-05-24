@@ -74,11 +74,19 @@ export interface Webhook {
   }
 }
 
+export interface GitRepo {
+  slug: string;
+  name: string;
+  description: string;
+  is_private: boolean;
+}
+
 export enum ErrorType {
   insufficientPermissions = 'insufficientPermissions',
   badCredentials = 'badCredentials',
   userNotFound = 'userNotFound',
-  invalidGitUrl = 'invalidGitUrl'
+  invalidGitUrl = 'invalidGitUrl',
+  repoNotFound = 'repoNotFound'
 }
 
 export class GitError extends Error {
@@ -112,5 +120,11 @@ export class UserNotFound extends GitError {
 export class InvalidGitUrl extends GitError {
   constructor(context: string, gitHost?: GitHost, error?: Error) {
     super(ErrorType.invalidGitUrl, `Invalid git url: ${context}`, gitHost, error);
+  }
+}
+
+export class RepoNotFound extends GitError {
+  constructor(context: string, gitHost?: GitHost, error?: Error) {
+    super(ErrorType.repoNotFound, `Repository not found: ${context}`, gitHost, error);
   }
 }

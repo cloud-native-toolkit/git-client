@@ -14,8 +14,8 @@ import {
 import {
   BadCredentials,
   GitHookConfig,
-  GitHookContentType,
-  InsufficientPermissions,
+  GitHookContentType, GitRepo,
+  InsufficientPermissions, RepoNotFound,
   TypedGitRepoConfig,
   Webhook
 } from '../git.model';
@@ -317,6 +317,29 @@ abstract class GithubCommon extends GitBase implements GitApi {
         } else {
           throw err;
         }
+      })
+  }
+
+  async getRepoInfo(): Promise<GitRepo> {
+    return this.octokit
+      .request('GET /repos/{owner}/{repo}', {
+        owner: this.config.owner,
+        repo: this.config.repo
+      })
+      .then((res: any) => {
+        return ({
+          slug: res.data.full_name,
+          name: res.data.name,
+          description: res.data.description,
+          is_private: res.data.private
+        })
+      })
+      .catch(err => {
+        if (err.response.status === 404) {
+          throw new RepoNotFound(this.config.url)
+        }
+
+        throw err
       })
   }
 

@@ -9,7 +9,7 @@ import {
   UnknownWebhookError, UpdatePullRequestBranchOptions,
   WebhookAlreadyExists
 } from '../git.api';
-import {BadCredentials, TypedGitRepoConfig, Webhook} from '../git.model';
+import {BadCredentials, GitRepo, RepoNotFound, TypedGitRepoConfig, Webhook} from '../git.model';
 import {GitBase} from '../git.base';
 import {isResponseError} from '../../util/superagent-support';
 import {apiFromConfig} from '../util';
@@ -120,7 +120,13 @@ export class Bitbucket extends GitBase implements GitApi {
       }))
   }
 
-  async mergePullRequest({pullNumber, method, message, title, delete_branch_after_merge}: MergePullRequestOptions): Promise<string> {
+  async mergePullRequest({
+                           pullNumber,
+                           method,
+                           message,
+                           title,
+                           delete_branch_after_merge
+                         }: MergePullRequestOptions): Promise<string> {
     return post(`${this.getRepoUrl()}/pullrequests/${pullNumber}/merge`)
       .auth(this.config.username, this.config.password)
       .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
@@ -160,7 +166,7 @@ export class Bitbucket extends GitBase implements GitApi {
       })
   }
 
-  async listFiles(): Promise<Array<{path: string, url?: string}>> {
+  async listFiles(): Promise<Array<{ path: string, url?: string }>> {
     const response: Response = await get(this.getRepoUrl() + '/src?pagelen=100')
       .auth(this.config.username, this.config.password)
       .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
@@ -173,7 +179,7 @@ export class Bitbucket extends GitBase implements GitApi {
       .map(s => ({path: s.path, url: s.links.self.href}));
   }
 
-  async getFileContents(fileDescriptor: {path: string, url?: string}): Promise<string | Buffer> {
+  async getFileContents(fileDescriptor: { path: string, url?: string }): Promise<string | Buffer> {
     const response: Response = await get(fileDescriptor.url)
       .auth(this.config.username, this.config.password)
       .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`);
@@ -213,7 +219,7 @@ export class Bitbucket extends GitBase implements GitApi {
     }
   }
 
-  buildWebhookData({webhookUrl}: {webhookUrl?: string}): BitbucketHookData {
+  buildWebhookData({webhookUrl}: { webhookUrl?: string }): BitbucketHookData {
     return {
       description: 'Webhook',
       url: webhookUrl,
@@ -289,7 +295,7 @@ export class Bitbucket extends GitBase implements GitApi {
     return this;
   }
 
-  getRepoApi({repo, url}: {repo?: string, url: string}): GitApi {
+  getRepoApi({repo, url}: { repo?: string, url: string }): GitApi {
     const newConfig = Object.assign({}, this.config, {repo, url})
 
     return apiFromConfig(newConfig)
@@ -308,6 +314,26 @@ export class Bitbucket extends GitBase implements GitApi {
       .catch(err => {
         if (/Unauthorized/.test(err.message)) {
           throw new BadCredentials('deleteRepo', this.config.type, err)
+        }
+
+        throw err
+      })
+  }
+
+  async getRepoInfo(): Promise<GitRepo> {
+    return get(this.getRepoUrl())
+      .auth(this.config.username, this.config.password)
+      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
+      .accept('application/json')
+      .then(res => ({
+        slug: res.body.full_name,
+        name: res.body.name,
+        description: res.body.description,
+        is_private: res.body.is_private
+      }))
+      .catch(err => {
+        if (err.response.status === 404) {
+          throw new RepoNotFound(this.config.url)
         }
 
         throw err

@@ -1,6 +1,6 @@
 import {SimpleGit, SimpleGitOptions} from 'simple-git';
 
-import {GitHost, TypedGitRepoConfig, Webhook} from './git.model';
+import {GitHost, GitRepo, TypedGitRepoConfig, Webhook} from './git.model';
 import {EvaluateErrorForRetry} from '../util/retry-with-delay';
 
 export class CreateWebhook {
@@ -193,4 +193,6 @@ export abstract class GitApi extends LocalGitApi {
   abstract createRepo(options: CreateRepoOptions): Promise<GitApi>;
 
   abstract deleteRepo(): Promise<GitApi>;
+
+  abstract getRepoInfo(): Promise<GitRepo>;
 }

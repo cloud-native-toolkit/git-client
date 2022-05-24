@@ -13,7 +13,7 @@ import {
   WebhookAlreadyExists
 } from '../git.api';
 import {GitBase} from '../git.base';
-import {TypedGitRepoConfig, Webhook} from '../git.model';
+import {GitRepo, TypedGitRepoConfig, Webhook} from '../git.model';
 import {isResponseError} from '../../util/superagent-support';
 import first from '../../util/first';
 
@@ -293,5 +293,9 @@ export class Gogs extends GitBase implements GitApi {
 
   getConfig(): TypedGitRepoConfig {
     return this.config
+  }
+
+  async getRepoInfo(): Promise<GitRepo> {
+    throw new Error('Method not implemented: getRepoInfo')
   }
 }

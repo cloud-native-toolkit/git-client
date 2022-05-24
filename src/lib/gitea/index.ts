@@ -13,7 +13,7 @@ import {
   WebhookAlreadyExists
 } from '../git.api';
 import {GitBase} from '../git.base';
-import {BadCredentials, TypedGitRepoConfig, Webhook} from '../git.model';
+import {BadCredentials, GitRepo, RepoNotFound, TypedGitRepoConfig, Webhook} from '../git.model';
 import {isResponseError} from '../../util/superagent-support';
 import first from '../../util/first';
 import {apiFromConfig} from '../util';
@@ -398,4 +398,23 @@ export class Gitea extends GitBase implements GitApi {
     return this.config
   }
 
+  async getRepoInfo(): Promise<GitRepo> {
+    return get(this.getRepoUrl())
+      .auth(this.config.username, this.config.password)
+      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
+      .accept('application/vnd.github.v3+json')
+      .then(res => ({
+        slug: res.body.full_name,
+        name: res.body.name,
+        description: res.body.description,
+        is_private: res.body.private
+      }))
+      .catch(err => {
+        if (err.response.status === 404) {
+          throw new RepoNotFound(this.config.url)
+        }
+
+        throw err
+      })
+  }
 }
