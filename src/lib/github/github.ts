@@ -291,6 +291,7 @@ abstract class GithubCommon extends GitBase implements GitApi {
         .request('POST /orgs/{org}/repos', {
           org: this.config.owner,
           name: name,
+          auto_init: autoInit,
           private: !!privateRepo
         })
         .then(res => this.getRepoApi({repo: name, url: res.data.clone_url}))
