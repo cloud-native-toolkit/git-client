@@ -1,9 +1,15 @@
 import {promises} from 'fs';
 import {SimpleGit} from 'simple-git';
+import {dump, load} from 'js-yaml';
+import * as fs from 'fs-extra';
 
-import {CreateWebhook, GitApi, PullRequest} from './git.api';
+import {CreateWebhook, GitApi, MergeResolver, PullRequest, SimpleGitWithApi} from './git.api';
 import {apiFromUrl} from './util';
 import {GitHost, Webhook} from './git.model';
+import {join as pathJoin} from 'path';
+import {Container} from 'typescript-ioc';
+import {Logger, verboseLoggerFactory} from '../util/logger';
+import sleep from '../util/sleep';
 
 const asKey = (name: string, key: string): string => {
   return `${name}_${key}`.toUpperCase()
@@ -84,22 +90,26 @@ describeTestCases('given $name', ({name, baseUrl, org, username, password} : Cas
 
   let classUnderTest: GitApi;
   let repo: string;
+  let logger: Logger;
   beforeAll(async () => {
     const url = `${baseUrl}/${org}`
     const gitApi: GitApi = await apiFromUrl(url, {username, password})
 
+    Container.bind(Logger).factory(verboseLoggerFactory(true))
+    logger = Container.get(Logger)
+
     repo = `test-${makeId(10)}`
-    console.log('Creating repo: ', repo)
+    logger.debug('Creating repo: ', repo)
     return gitApi.createRepo({name: repo, privateRepo: false, autoInit: true})
       .then((result: GitApi) => {
-        console.log('Got api:', result.getConfig().url)
+        logger.debug('Got api:', result.getConfig().url)
         classUnderTest = result
       });
   }, 30000)
 
   afterAll(async () => {
     if (classUnderTest) {
-      console.log('Deleting repo: ', classUnderTest.getConfig().url)
+      logger.debug('Deleting repo: ', classUnderTest.getConfig().url)
       // await classUnderTest.deleteRepo();
     }
   })
@@ -117,7 +127,7 @@ describeTestCases('given $name', ({name, baseUrl, org, username, password} : Cas
 
         const result = await classUnderTest.createWebhook(createWebhookParams)
 
-        console.log('Webhook created')
+        logger.debug('Webhook created')
 
         const webhooks: Webhook[] = await classUnderTest.getWebhooks();
         expect(webhooks.length).toEqual(1);
@@ -132,7 +142,7 @@ describeTestCases('given $name', ({name, baseUrl, org, username, password} : Cas
       afterEach(async () => {
         const repo = classUnderTest.getConfig().repo
 
-        await promises.rmdir(`${baseDir}/${repo}`, {recursive: true})
+        await promises.rm(`${baseDir}/${repo}`, {recursive: true})
       })
 
       test('then create the pr', async () => {
@@ -150,24 +160,277 @@ describeTestCases('given $name', ({name, baseUrl, org, username, password} : Cas
 
         await simpleGit.commit('Updates readme')
 
-        console.log('Pushing branch: ', branchName)
+        logger.debug('Pushing branch: ', branchName)
         await simpleGit.push(`origin`, branchName, ['-u'])
 
-        console.log('Creating pull request', branchName)
+        logger.debug('Creating pull request', branchName)
         const {pullNumber} = await classUnderTest.createPullRequest({
           title: 'test',
           sourceBranch: branchName,
           targetBranch: defaultBranch
         })
 
-        console.log('Getting pull request', pullNumber)
+        logger.debug('Getting pull request', pullNumber)
         const result: PullRequest = await classUnderTest.getPullRequest({pullNumber})
 
         expect(result.pullNumber).toEqual(pullNumber)
 
-        console.log('Merging pull request', pullNumber)
+        logger.debug('Merging pull request', pullNumber)
         await classUnderTest.mergePullRequest({pullNumber, method: 'squash', delete_branch_after_merge: true})
       }, 30000);
     });
   });
+
+  describe('given mergePullRequest()', () => {
+    describe('when branches conflict', () => {
+      const baseDir = process.cwd()
+
+      afterEach(async () => {
+        const repo = classUnderTest.getConfig().repo
+
+        await promises.rm(`${baseDir}/${repo}`, {recursive: true})
+      })
+
+      test('then it should apply a resolver function', async () => {
+
+        const createPr = async (filename: string, message: string, content: string): Promise<{branchName: string, pullNumber: number}> => {
+          const simpleGit: SimpleGit = await classUnderTest.clone(classUnderTest.getConfig().repo, {baseDir, userConfig: {email: 'test@email.com', name: 'test'}})
+
+          const defaultBranch: string = await simpleGit.revparse(['--abbrev-ref', 'HEAD'])
+
+          const branchName = `test-${makeId(10)}`
+          await simpleGit.checkoutBranch(branchName, `origin/${defaultBranch}`)
+
+          const fullFilename = `${baseDir}/${classUnderTest.getConfig().repo}/${filename}`
+          await promises.writeFile(fullFilename, content)
+
+          await simpleGit.add(filename)
+
+          await simpleGit.commit(message)
+
+          logger.debug('Pushing branch: ', branchName)
+          await simpleGit.push(`origin`, branchName, ['-u'])
+
+          logger.debug('Creating pull request for branch: ', branchName)
+          const {pullNumber} = await classUnderTest.createPullRequest({
+            title: 'test',
+            sourceBranch: branchName,
+            targetBranch: defaultBranch
+          })
+
+          await promises.rm(`${baseDir}/${repo}`, {recursive: true})
+
+          return {branchName, pullNumber}
+        }
+
+        const pr1 = await createPr('kustomization.yaml', `Updates kustomization.yaml - resourceA`, dump({resources: ['resourceA']}))
+        const pr2 = await createPr('kustomization.yaml', `Updates kustomization.yaml - resourceB`, dump({resources: ['resourceB']}))
+
+        logger.debug('Merging first pull request: ', pr1)
+        await classUnderTest.updateAndMergePullRequest({pullNumber: pr1.pullNumber, method: 'squash', delete_branch_after_merge: true, resolver: argocdResolver('resourceA')})
+
+        logger.debug('Merging second pull request: ', pr2)
+        await classUnderTest.updateAndMergePullRequest({pullNumber: pr2.pullNumber, method: 'squash', delete_branch_after_merge: true, resolver: argocdResolver('resourceB')})
+
+        await classUnderTest.clone(classUnderTest.getConfig().repo, {baseDir, userConfig: {email: 'test@email.com', name: 'test'}})
+
+        const fileContent: any = await promises
+          .readFile(`${baseDir}/${classUnderTest.getConfig().repo}/kustomization.yaml`)
+          .then((content: Buffer) => load(content.toString()))
+
+        expect(fileContent.resources).toEqual(['resourceA', 'resourceB'])
+      }, 360000);
+    });
+  });
 })
+
+
+const argocdResolver = (applicationPath: string): MergeResolver => {
+  return async (git: SimpleGitWithApi, conflicts: string[]): Promise<{resolvedConflicts: string[], conflictErrors: Error[]}> => {
+    const kustomizeYamls: string[] = conflicts.filter(f => /.*kustomization.yaml/.test(f));
+
+    console.log('Inside argocd resolver', conflicts)
+
+    const processKustomizeYaml = async (kustomizeYaml: string) => {
+      // get the file version that is in master
+      await git.raw(['checkout', '--ours', kustomizeYaml]);
+
+      // reapply our change on top
+      await addKustomizeResource(pathJoin(git.repoDir, kustomizeYaml), applicationPath);
+
+      return kustomizeYaml;
+    }
+
+    const result: Array<string | Error> = []
+    for (let i = 0; i < kustomizeYamls.length; i++) {
+      result.push(await processKustomizeYaml(kustomizeYamls[i]).catch(err => err))
+    }
+
+    const resolvedConflicts: string[] = result.filter(isString);
+    const conflictErrors: Error[] = result.filter(isError);
+
+    return {resolvedConflicts, conflictErrors};
+  }
+}
+
+export interface IKustomization {
+  resources: string[];
+}
+
+export class Kustomization implements IKustomization {
+  config: IKustomization;
+  resources: string[];
+
+  constructor(config?: IKustomization) {
+    Object.assign(
+      this as any,
+      config && config.resources ? config : {resources: []},
+      config ? {config} : {config: {apiVersion: 'kustomize.config.k8s.io/v1beta1', kind: 'Kustomization'}}
+    );
+  }
+
+  addResource(resource: string): Kustomization {
+    if (!this.containsResource(resource)) {
+      this.resources.push(resource);
+      this.resources.sort()
+    } else {
+      console.log('Already contains resource', resource)
+    }
+
+    return this;
+  }
+
+  removeResource(resource: string): Kustomization {
+    if (this.containsResource(resource)) {
+      const index = this.resources.indexOf(resource);
+
+      this.resources.splice(index, 1);
+      this.resources.sort();
+    }
+
+    return this;
+  }
+
+  containsResource(resource: string): boolean {
+    return this.resources.includes(resource);
+  }
+
+  asJson() {
+    const resource = Object.assign(
+      {},
+      this.config,
+      {
+        resources: this.resources
+      }
+    );
+
+    return resource;
+  }
+
+  asJsonString(): string {
+    return JSON.stringify(this.asJson());
+  }
+
+  asYamlString(): string {
+    return dump(this.asJson());
+  }
+}
+
+export function isFile(file: File | string): file is File {
+  return !!file && !!(file as File).exists && !!(file as File).read && !!(file as File).write;
+}
+
+export class File {
+  constructor(public filename: string) {}
+
+  async exists(): Promise<boolean> {
+    return fileExists(this.filename);
+  }
+
+  async read(): Promise<string | Buffer> {
+    return fs.readFile(this.filename);
+  }
+
+  async readYaml<T = any>(): Promise<T> {
+    const content = await this.read();
+
+    return load(content.toString()) as T;
+  }
+
+  async readJson<T = any>(): Promise<T> {
+    const content = await this.read();
+
+    return JSON.parse(content.toString());
+  }
+
+  async write(contents: string): Promise<boolean> {
+    return fs.writeFile(this.filename, contents).then(v => true).catch(err => false);
+  }
+
+  async contains(contents: string): Promise<boolean> {
+    return fileContains(this.filename, contents);
+  }
+
+  async delete(): Promise<void> {
+    return fs.remove(this.filename);
+  }
+}
+
+export const fileContains = async (path: string, contents: string): Promise<boolean> => {
+  const result: string = await fs.readFile(path).then(v => v.toString()).catch(err => '##error reading file##');
+
+  return result === contents;
+}
+
+export const fileExists = async (path: string): Promise<boolean> => {
+  return await fs.access(path, fs.constants.R_OK).then(v => true).catch(err => false);
+}
+
+export const addKustomizeResource = async (kustomizeFile: string | File, path: string): Promise<boolean> => {
+
+  const file: File = isFile(kustomizeFile) ? kustomizeFile : new File(kustomizeFile);
+
+  console.log('Loading kustomize file', kustomizeFile)
+
+  const kustomize: Kustomization = await loadKustomize(kustomizeFile);
+
+  console.log('kustomize resources before', kustomize.resources)
+
+  if (kustomize.containsResource(path)) {
+    console.log('Already contains resource', path)
+    return false;
+  }
+
+  kustomize.addResource(path);
+
+  console.log('kustomize resources after', {resources: kustomize.resources, yaml: kustomize.asYamlString()})
+
+  return file.write(kustomize.asYamlString()).then(writeResult => {
+    console.log('Write result: ', {writeResult, filename: file.filename})
+    return true
+  });
+};
+
+export const loadKustomize = async (kustomizeFile: File | string): Promise<Kustomization> => {
+
+  const file: File = isFile(kustomizeFile) ? kustomizeFile : new File(kustomizeFile);
+
+  console.log(`Loading kustomize file: ${file.filename}`)
+
+  if (!await file.exists()) {
+    console.log(`Kustomize file does not exist: ${file.filename}`)
+    return new Kustomization();
+  }
+
+  const kustomize: IKustomization = await file.readYaml();
+
+  return new Kustomization(kustomize);
+}
+
+export function isString(value: any): value is string {
+  return value && typeof value === 'string';
+}
+
+export function isError(error: any): error is Error {
+  return !!error && !!((error as Error).stack) && !!((error as Error).message);
+}

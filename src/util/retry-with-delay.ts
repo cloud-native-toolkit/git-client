@@ -13,6 +13,8 @@ export interface RetryResult {
 }
 export type EvaluateErrorForRetry = (error: Error) => Promise<RetryResult>;
 
+export const noRetry = async (error: Error) => ({retry: false})
+
 export function compositeRetryEvaluation(values: EvaluateErrorForRetry[]): EvaluateErrorForRetry {
   const filteredRetryValues: EvaluateErrorForRetry[] = values.filter(v => !!v);
 

@@ -3,9 +3,9 @@ import {delete as httpDelete, get, post, put, Response} from 'superagent';
 import {
   CreatePullRequestOptions, CreateRepoOptions,
   CreateWebhook, DeleteBranchOptions, GetPullRequestOptions,
-  GitApi,
+  GitApi, GitBranch,
   GitEvent,
-  GitHeader,
+  GitHeader, MergeConflict,
   MergePullRequestOptions,
   PullRequest,
   UnknownWebhookError, UpdatePullRequestBranchOptions,
@@ -158,61 +158,55 @@ abstract class GithubCommon extends GitBase implements GitApi {
   }
 
   async deleteBranch({branch}: DeleteBranchOptions): Promise<string> {
-    return await this.delete(`/git/refs/heads/${branch}`)
+    return this.octokit.request(
+      'DELETE /repos/{owner}/{repo}/git/refs/{ref}',
+      {
+        owner: this.config.owner,
+        repo: this.config.repo,
+        ref: `heads/${branch}`
+      })
       .then(res => 'success')
+    // return await this.delete(`/git/refs/heads/${branch}`)
+    //   .then(res => 'success')
   }
 
   async getPullRequest(options: GetPullRequestOptions, retryHandler?: EvaluateErrorForRetry): Promise<PullRequest> {
-
-    const f = async (): Promise<PullRequest> => {
-      const response: Response = await this.get(`/pulls/${options.pullNumber}`);
-
-      return {
-        pullNumber: response.body.number,
-        sourceBranch: response.body.head.ref,
-        targetBranch: response.body.base.ref,
-      };
-    };
-
-    return this.exec(f, 'getPullRequest', {retryHandler, rateLimit: options.rateLimit});
+    return this.octokit.request(
+      'GET /repos/{owner}/{repo}/pulls/{pull_number}',
+      {
+        owner: this.config.owner,
+        repo: this.config.repo,
+        pull_number: options.pullNumber
+      })
+      .then(res => ({
+        pullNumber: res.data.number,
+        sourceBranch: res.data.head.ref,
+        targetBranch: res.data.base.ref
+      }))
   }
 
   async createPullRequest({title, sourceBranch, targetBranch, maintainer_can_modify, draft = false, rateLimit}: CreatePullRequestOptions, retryHandler?: EvaluateErrorForRetry): Promise<PullRequest> {
 
-    const f = async (): Promise<PullRequest> => {
-      const response: Response = await this.post('/pulls', {
+    return this.octokit.request(
+      'POST /repos/{owner}/{repo}/pulls',
+      {
+        owner: this.config.owner,
+        repo: this.config.repo,
         title,
         head: sourceBranch,
         base: targetBranch,
         maintainer_can_modify,
-        draft,
-      });
-
-      return {
-        pullNumber: response.body.number,
+        draft
+      })
+      .then(res => ({
+        pullNumber: res.data.number,
         sourceBranch,
-        targetBranch,
-      };
-    };
-
-    return this.exec(f, 'createPullRequest', {retryHandler, rateLimit});
+        targetBranch
+      }))
   }
 
-  async mergePullRequest({pullNumber, title, message, method, rateLimit, delete_branch_after_merge = false}: MergePullRequestOptions, retryHandler?: EvaluateErrorForRetry): Promise<string> {
-
-    const f = async (): Promise<string> => {
-      const response: Response = await this.put(`/pulls/${pullNumber}/merge`, {
-        commit_title: title,
-        commit_message: message,
-        merge_method: method,
-      });
-
-      return response.body.message;
-    }
-
-    const result = this.exec(f, 'mergePullRequest', {retryHandler, rateLimit});
-
-    if (delete_branch_after_merge) {
+  async mergePullRequestInternal({pullNumber, title, message, method, rateLimit, delete_branch_after_merge = false}: MergePullRequestOptions, retryHandler?: EvaluateErrorForRetry): Promise<string> {
+    const deleteBranch = !delete_branch_after_merge ? async () => undefined : async () => {
       const {sourceBranch} = await this.getPullRequest({pullNumber}).catch(() => ({sourceBranch: ''}));
 
       if (sourceBranch) {
@@ -220,18 +214,57 @@ abstract class GithubCommon extends GitBase implements GitApi {
       }
     }
 
+    const result: string = await this.octokit.request(
+      'PUT /repos/{owner}/{repo}/pulls/{pullNumber}/merge',
+      {
+        owner: this.config.owner,
+        repo: this.config.repo,
+        pullNumber,
+        commit_title: title,
+        commit_message: message,
+        merge_method: method
+      })
+      .then(async res => {
+        console.log('Merge complete!!')
+        await deleteBranch()
+
+        console.log('Delete complete')
+
+        return res.data.message
+      })
+      .catch(err => {
+        if (err.response.status === 405) {
+          console.log('Merge conflict: ', err)
+          throw new MergeConflict(pullNumber)
+        } else {
+          throw err
+        }
+      })
+
+    console.log('Merge complete')
+
     return result;
   }
 
-  async updatePullRequestBranch(options: UpdatePullRequestBranchOptions, retryHandler?: EvaluateErrorForRetry): Promise<string> {
+  async updatePullRequestBranch({pullNumber}: UpdatePullRequestBranchOptions, retryHandler?: EvaluateErrorForRetry): Promise<string> {
+    return this.octokit.request(
+      'PUT /repos/{owner}/{repo}/pulls/{pullNumber}/update-branch',
+      {
+        owner: this.config.owner,
+        repo: this.config.repo,
+        pullNumber
+      })
+      .then(res => res.data.message)
+  }
 
-    const f = async (): Promise<string> => {
-      const response: Response = await this.put(`/pulls/${options.pullNumber}/update-branch`);
-
-      return response.body.message;
-    }
-
-    return this.exec(f, 'updatePullRequestBranch', {retryHandler, rateLimit: options.rateLimit});
+  async getBranches(): Promise<GitBranch[]> {
+    return this.octokit.request(
+      'GET /repos/{owner}/{repo}/branches',
+      {
+        owner: this.config.owner,
+        repo: this.config.repo
+      })
+      .then(res => res.data)
   }
 
   async get(uri: string = ''): Promise<Response> {
@@ -347,9 +380,14 @@ abstract class GithubCommon extends GitBase implements GitApi {
   async createWebhook(options: CreateWebhook): Promise<string> {
 
     try {
-      const response: Response = await this.post('/hooks', this.buildWebhookData(options));
-
-      return response.body.id;
+      return await this.octokit.request(
+        'POST /repos/{owner}/{repo}/hooks',
+          Object.assign({}, {owner: this.config.owner, repo: this.config.repo}, this.buildWebhookData(options)) as any
+        )
+        .then(res => 'test')
+      // const response: Response = await this.post('/hooks', this.buildWebhookData(options));
+      //
+      // return response.body.id;
     } catch (err) {
       if (isResponseError(err)) {
         if (err.response.text.match(/Hook already exists/)) {

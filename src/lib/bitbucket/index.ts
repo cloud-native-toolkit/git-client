@@ -3,9 +3,9 @@ import {get, post, delete as deleteUrl, Response} from 'superagent';
 import {
   CreatePullRequestOptions, CreateRepoOptions,
   CreateWebhook, DeleteBranchOptions, GetPullRequestOptions,
-  GitApi,
+  GitApi, GitBranch,
   GitEvent,
-  GitHeader, MergePullRequestOptions, PullRequest,
+  GitHeader, MergeConflict, MergePullRequestOptions, PullRequest,
   UnknownWebhookError, UpdatePullRequestBranchOptions,
   WebhookAlreadyExists
 } from '../git.api';
@@ -120,7 +120,7 @@ export class Bitbucket extends GitBase implements GitApi {
       }))
   }
 
-  async mergePullRequest({
+  async mergePullRequestInternal({
                            pullNumber,
                            method,
                            message,
@@ -138,6 +138,13 @@ export class Bitbucket extends GitBase implements GitApi {
         message
       })
       .then(() => 'success')
+      .catch(err => {
+        if (err.response.body.error.message === 'You can\'t merge until you resolve all merge conflicts.') {
+          throw new MergeConflict(pullNumber)
+        }
+
+        throw err
+      })
   }
 
   async updatePullRequestBranch(options: UpdatePullRequestBranchOptions): Promise<string> {
@@ -338,5 +345,9 @@ export class Bitbucket extends GitBase implements GitApi {
 
         throw err
       })
+  }
+
+  async getBranches(): Promise<GitBranch[]> {
+    throw new Error('method not implemented: getBranches()')
   }
 }

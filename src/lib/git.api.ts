@@ -126,6 +126,11 @@ export interface PullRequest {
   sourceBranch: string;
   targetBranch: string;
   mergeStatus?: string;
+  hasConflicts?: boolean;
+}
+
+export interface GitBranch {
+  name: string;
 }
 
 export interface LocalGitConfig {
@@ -138,6 +143,16 @@ export interface LocalGitConfig {
 export interface GitUserConfig {
   email: string;
   name: string;
+}
+
+export class MergeConflict extends Error {
+  constructor(public readonly pullNumber: number) {
+    super(`Merge conflict for pull request: ${pullNumber}`);
+  }
+}
+
+export const isMergeConflict = (err: Error): err is MergeConflict => {
+  return !!err && !!(err as MergeConflict).pullNumber
 }
 
 export interface SimpleGitWithApi extends SimpleGit {
@@ -173,6 +188,8 @@ export abstract class GitApi extends LocalGitApi {
   abstract createWebhook(request: CreateWebhook): Promise<string>;
 
   abstract buildWebhookParams(eventId: GitEvent): WebhookParams;
+
+  abstract getBranches(): Promise<GitBranch[]>;
 
   abstract deleteBranch(options: DeleteBranchOptions): Promise<string>;
 

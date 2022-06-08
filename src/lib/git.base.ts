@@ -13,14 +13,24 @@ import {
   GitUserConfig,
   MergeResolver,
   SimpleGitWithApi,
-  ConflictErrors, UnresolvedConflictsError
+  ConflictErrors, UnresolvedConflictsError, isMergeConflict
 } from './git.api';
 import {GitHost, TypedGitRepoConfig} from './git.model';
 import {Logger} from '../util/logger';
 import simpleGit, {SimpleGit, SimpleGitOptions, StatusResult} from 'simple-git';
 import {timer} from './timer';
-import {compositeRetryEvaluation, EvaluateErrorForRetry, RetryResult, retryWithDelay} from '../util/retry-with-delay';
+import {
+  compositeRetryEvaluation,
+  noRetry,
+  EvaluateErrorForRetry,
+  RetryResult,
+  retryWithDelay
+} from '../util/retry-with-delay';
 import {isResponseError, ResponseError} from '../util/superagent-support';
+import sleep from '../util/sleep';
+import {LogResult} from 'simple-git/dist/typings/response';
+import {promises} from 'fs';
+import {join} from 'path';
 
 export function isMergeError(error: Error): error is ResponseError {
 
@@ -88,75 +98,81 @@ export abstract class GitBase extends GitApi {
   async rebaseBranch(config: {sourceBranch: string, targetBranch: string, resolver?: MergeResolver}, options: {userConfig?: GitUserConfig} = {}): Promise<boolean> {
 
     const suffix = Math.random().toString(36).replace(/[^a-z0-9]+/g, '').substr(0, 5);
-    const repoDir = `/tmp/repo/rebase-${suffix}`;
+    const repoDir = `/tmp/repo/${config.sourceBranch}/rebase-${suffix}`;
     const resolver: MergeResolver = config.resolver || (() => Promise.resolve({resolvedConflicts: []}));
 
-    this.logger.log(`Cloning ${this.config.host}/${this.config.owner}/${this.config.repo} repo into ${repoDir}`)
-
-    const git: SimpleGitWithApi = await this.clone(repoDir, {userConfig: options.userConfig});
-
-    this.logger.log(`Checking out branch - ${config.sourceBranch}`);
-
-    await git.checkoutBranch(config.sourceBranch, `origin/${config.sourceBranch}`);
-
-    git.fetch();
-
-    this.logger.log(`Rebasing ${config.sourceBranch} branch on ${config.targetBranch}`);
-
-    // TODO need to loop through all commits
     try {
-      await git.rebase([config.targetBranch]);
-    } catch (err) {
-      this.logger.debug('Error during rebase', err);
-    }
+      this.logger.log(`Cloning ${this.config.host}/${this.config.owner}/${this.config.repo} repo into ${repoDir}`)
 
-    let status: StatusResult;
-    do {
-      status = await git.status();
-      this.logger.log(`Status after rebase`, {status});
+      const git: SimpleGitWithApi = await this.clone(repoDir, {userConfig: options.userConfig});
 
-      if (status.not_added.length === 0 && status.deleted.length === 0 && status.conflicted.length === 0 && status.staged.length === 0) {
-        break;
+      this.logger.log(`Checking out branch - ${config.sourceBranch}`);
+
+      await git.checkoutBranch(config.sourceBranch, `origin/${config.sourceBranch}`);
+
+      this.logger.log(`Rebasing ${config.sourceBranch} branch on ${config.targetBranch}`);
+
+      try {
+        await git.rebase([config.targetBranch]);
+      } catch (err) {
+        this.logger.debug('Error during rebase', err);
       }
 
-      if (status.conflicted.length > 0) {
-        this.logger.log('  Resolving rebase conflicts');
+      let status: StatusResult;
+      do {
+        status = await git.status();
+        this.logger.log(`Status after rebase:`, {status});
 
-        try {
-          const {resolvedConflicts, conflictErrors} = await resolver(git, status.conflicted);
-          if (conflictErrors && conflictErrors.length > 0) {
-            this.logger.log('  Errors resolving conflicts:', conflictErrors);
-            throw new ConflictErrors(conflictErrors);
-          }
-
-          const unresolvedConflicts: string[] = status.conflicted.filter(conflict => !resolvedConflicts.includes(conflict));
-          if (unresolvedConflicts.length > 0) {
-            this.logger.log('  Unresolved conflicts:', unresolvedConflicts);
-            throw new UnresolvedConflictsError(unresolvedConflicts);
-          }
-
-          this.logger.log('Adding resolved conflicts after rebase');
-          await Promise.all(resolvedConflicts.map(async (file: string) => {
-            await git.add(file);
-            await git.commit(`Resolves conflict with ${file}`);
-            return file;
-          }));
-        } catch (error) {
-          this.logger.error('Error resolving conflicts', {error});
+        if (status.not_added.length === 0 && status.deleted.length === 0 && status.conflicted.length === 0 && status.staged.length === 0) {
+          break;
         }
+
+        if (status.conflicted.length > 0) {
+          this.logger.log('  Resolving rebase conflicts');
+
+          try {
+            const {resolvedConflicts, conflictErrors} = await resolver(git, status.conflicted);
+            if (conflictErrors && conflictErrors.length > 0) {
+              this.logger.log('  Errors resolving conflicts:', conflictErrors);
+              throw new ConflictErrors(conflictErrors);
+            }
+
+            const unresolvedConflicts: string[] = status.conflicted.filter(conflict => !resolvedConflicts.includes(conflict));
+            if (unresolvedConflicts.length > 0) {
+              this.logger.log('  Unresolved conflicts:', unresolvedConflicts);
+              throw new UnresolvedConflictsError(unresolvedConflicts);
+            }
+
+            this.logger.log('Adding resolved conflicts after rebase: ', resolvedConflicts);
+            await Promise.all(resolvedConflicts.map(async (file: string) => {
+              await git.add(file)
+              await git.commit(`Resolves conflict with ${file}`)
+              return file
+            }));
+          } catch (error) {
+            this.logger.error('Error resolving conflicts', {error});
+          }
+        }
+
+        this.logger.log('Continuing rebase');
+        const rebaseResult = await git.rebase(['--continue']);
+        if (/No changes - did you forget to use 'git add'/.test(rebaseResult)) {
+          this.logger.debug('No changes after rebase. Skipping commit.')
+          await git.rebase(['--skip'])
+        }
+      } while (true);
+
+      if (status.ahead === 0 && status.behind === 0) {
+        this.logger.debug('No changes resulted from rebase.')
+        return false;
       }
 
-      this.logger.log('Continuing rebase');
-      await git.rebase(['--continue']);
-    } while (true);
+      this.logger.log(`Pushing changes to ${config.sourceBranch} force-with-lease`)
+      await git.push('origin', config.sourceBranch, ['--force-with-lease']);
 
-    if (status.ahead === 0 && status.behind === 0) {
-      this.logger.debug('No changes resulted from rebase.')
-      return false;
+    } finally {
+      await promises.rm(repoDir, {recursive: true, force: true}).catch(ignoreError => ignoreError)
     }
-
-    this.logger.log(`Pushing changes to ${config.sourceBranch} force-with-lease`)
-    await git.push('origin', config.sourceBranch, ['--force-with-lease']);
 
     return true;
   }
@@ -167,15 +183,15 @@ export abstract class GitBase extends GitApi {
 
     const mergeConflictHandler = async (error: Error): Promise<RetryResult> => {
 
-      if (_isMergeError(error)) {
-        const delay = 5000 + Math.random() * 5000;
+      if (_isMergeError(error) || isMergeConflict(error)) {
+        const delay = 1000 + Math.random() * 5000;
 
         logger.log('Rebasing branch and trying again.')
 
         const pr: PullRequest = await this.getPullRequest(options);
-        await this.rebaseBranch(Object.assign({}, pr, {resolver: options.resolver}), {userConfig: options.userConfig});
+        const retry: boolean = await this.rebaseBranch(Object.assign({}, pr, {resolver: options.resolver}), {userConfig: options.userConfig});
 
-        return {retry: true, delay};
+        return {retry, delay};
       } else {
         logger.log(`Error shouldn't be retried. ${error.message}/${isResponseError(error) ? error.status : '???'}/${isResponseError(error) ? error.response?.text : '?'}`);
 
@@ -194,6 +210,35 @@ export abstract class GitBase extends GitApi {
       compositeRetryEvaluation([mergeConflictHandler, retryHandler])
     );
   }
+
+  async mergePullRequest(options: MergePullRequestOptions, retryHandler: EvaluateErrorForRetry = noRetry): Promise<string> {
+    return new Promise(async (resolve, reject) => {
+      while (true) {
+        try {
+          this.logger.debug('Merging pull request: ', options)
+          const result = await this.mergePullRequestInternal(options)
+
+          resolve(result)
+          break
+        } catch (err) {
+          const {retry, delay} = await retryHandler(err)
+
+          this.logger.debug('Retry handler complete: ', {retry, delay})
+
+          if (retry && delay) {
+            this.logger.debug('Sleeping: ', delay)
+            await sleep(delay)
+            this.logger.debug('Done sleeping: ', delay)
+          } else if (!retry) {
+            reject(err)
+            break
+          }
+        }
+      }
+    })
+  }
+
+  abstract mergePullRequestInternal(options: MergePullRequestOptions): Promise<string>;
 
   private buildGitOptions(input: LocalGitConfig): Partial<SimpleGitOptions> {
     return Object

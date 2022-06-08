@@ -6,7 +6,7 @@ import * as StreamZip from 'node-stream-zip';
 import {
   CreatePullRequestOptions, CreateRepoOptions,
   CreateWebhook, DeleteBranchOptions, GetPullRequestOptions,
-  GitApi,
+  GitApi, GitBranch,
   GitEvent,
   GitHeader, MergePullRequestOptions, PullRequest,
   UnknownWebhookError, UpdatePullRequestBranchOptions,
@@ -131,7 +131,7 @@ export class Gogs extends GitBase implements GitApi {
     throw new Error('Method not implemented: createPullRequest')
   }
 
-  async mergePullRequest(options: MergePullRequestOptions): Promise<string> {
+  async mergePullRequestInternal(options: MergePullRequestOptions): Promise<string> {
 
     throw new Error('Method not implemented: mergePullRequest')
   }
@@ -297,5 +297,9 @@ export class Gogs extends GitBase implements GitApi {
 
   async getRepoInfo(): Promise<GitRepo> {
     throw new Error('Method not implemented: getRepoInfo')
+  }
+
+  async getBranches(): Promise<GitBranch[]> {
+    throw new Error('method not implemented: getBranches')
   }
 }

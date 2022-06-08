@@ -4,9 +4,9 @@ import {
   CreatePullRequestOptions,
   CreateRepoOptions,
   CreateWebhook, DeleteBranchOptions, GetPullRequestOptions,
-  GitApi,
+  GitApi, GitBranch,
   GitEvent,
-  GitHeader, MergePullRequestOptions, PullRequest,
+  GitHeader, MergeConflict, MergePullRequestOptions, PullRequest,
   UnknownWebhookError, UpdatePullRequestBranchOptions,
   WebhookAlreadyExists
 } from '../git.api';
@@ -137,7 +137,8 @@ export class Gitlab extends GitBase implements GitApi {
         pullNumber: res.body.iid,
         sourceBranch: res.body.source_branch,
         targetBranch: res.body.target_branch,
-        mergeStatus: res.body.merge_status
+        mergeStatus: res.body.merge_status,
+        hasConflicts: res.body.has_conflicts
       }))
   }
 
@@ -159,13 +160,15 @@ export class Gitlab extends GitBase implements GitApi {
       }))
   }
 
-  async mergePullRequest({pullNumber, method, delete_branch_after_merge, message, title, rateLimit}: MergePullRequestOptions): Promise<string> {
+  async mergePullRequestInternal({pullNumber, method, delete_branch_after_merge, message, title, rateLimit}: MergePullRequestOptions): Promise<string> {
 
     let status: string = ''
+    let conflicts: boolean = false
     while (true) {
-      const {mergeStatus} = await this.getPullRequest({pullNumber})
+      const {mergeStatus, hasConflicts} = await this.getPullRequest({pullNumber})
 
       status = mergeStatus;
+      conflicts = hasConflicts;
 
       if (status !== 'checking') {
         break
@@ -175,8 +178,12 @@ export class Gitlab extends GitBase implements GitApi {
       await sleep(3000)
     }
 
+    if (status !== 'can_be_merged' && conflicts) {
+      throw new MergeConflict(pullNumber)
+    }
+
     if (status !== 'can_be_merged') {
-      throw new Error('Pull request cannot be merged')
+      throw new Error('Pull request cannot be merged: ' + status)
     }
 
     const mergeMessage = `${title}\n${!message ? '' : message}`
@@ -195,10 +202,6 @@ export class Gitlab extends GitBase implements GitApi {
         )
       )
       .then(() => 'success')
-      .catch(err => {
-        console.log('Error: ', err)
-        throw err;
-      })
   }
 
   async updatePullRequestBranch({pullNumber, rateLimit}: UpdatePullRequestBranchOptions): Promise<string> {
@@ -404,5 +407,9 @@ export class Gitlab extends GitBase implements GitApi {
 
         throw err
       })
+  }
+
+  async getBranches(): Promise<GitBranch[]> {
+    throw new Error('method not implemented: getBranches()')
   }
 }

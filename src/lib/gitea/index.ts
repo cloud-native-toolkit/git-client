@@ -6,9 +6,9 @@ import * as StreamZip from 'node-stream-zip';
 import {
   CreatePullRequestOptions, CreateRepoOptions,
   CreateWebhook, DeleteBranchOptions, GetPullRequestOptions,
-  GitApi,
+  GitApi, GitBranch,
   GitEvent,
-  GitHeader, MergePullRequestOptions, PullRequest,
+  GitHeader, MergeConflict, MergePullRequestOptions, PullRequest,
   UnknownWebhookError, UpdatePullRequestBranchOptions,
   WebhookAlreadyExists
 } from '../git.api';
@@ -160,7 +160,7 @@ export class Gitea extends GitBase implements GitApi {
       }))
   }
 
-  async mergePullRequest({pullNumber, method, resolver, title, message, delete_branch_after_merge = false}: MergePullRequestOptions): Promise<string> {
+  async mergePullRequestInternal({pullNumber, method, resolver, title, message, delete_branch_after_merge = false}: MergePullRequestOptions): Promise<string> {
     return post(`${this.getRepoUrl()}/pulls/${pullNumber}/merge`)
       .auth(this.config.username, this.config.password)
       .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
@@ -172,6 +172,14 @@ export class Gitea extends GitBase implements GitApi {
         delete_branch_after_merge
       })
       .then(() => 'success')
+      .catch(err => {
+        if (err.response.status === 405) {
+          console.log('Merge conflict: ', err)
+          throw new MergeConflict(pullNumber)
+        } else {
+          throw err
+        }
+      })
   }
 
   async updatePullRequestBranch({pullNumber}: UpdatePullRequestBranchOptions): Promise<string> {
@@ -416,5 +424,9 @@ export class Gitea extends GitBase implements GitApi {
 
         throw err
       })
+  }
+
+  async getBranches(): Promise<GitBranch[]> {
+    throw new Error('method not implemented: getBranches()')
   }
 }
