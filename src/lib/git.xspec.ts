@@ -12,6 +12,7 @@ interface CaseConfig {
   org: string;
   username: string;
   password: string;
+  project?: string;
 }
 
 const getConfigValues = (name: string): CaseConfig | undefined => {
@@ -20,6 +21,7 @@ const getConfigValues = (name: string): CaseConfig | undefined => {
   const org = process.env[asKey(name, 'org')];
   const username = process.env[asKey(name, 'username')];
   const password = process.env[asKey(name, 'password')];
+  const project = process.env[asKey(name, 'project')];
 
   if (skip === 'true') {
     console.log(`${asKey(name, 'skip')} is set to true. Skipping test...`)
@@ -36,7 +38,8 @@ const getConfigValues = (name: string): CaseConfig | undefined => {
     baseUrl,
     org,
     username,
-    password
+    password,
+    project
   }
 }
 
@@ -59,6 +62,7 @@ addTestConfig('ghe');
 addTestConfig('gitlab');
 addTestConfig('gitea');
 addTestConfig('bitbucket');
+addTestConfig('azure');
 
 function makeId(length: number): string {
   const result           = [];
@@ -74,7 +78,7 @@ function makeId(length: number): string {
 
 const describeTestCases = describe.each<CaseConfig>(cases);
 
-describeTestCases('given $name', ({name, baseUrl, org, username, password} : CaseConfig) => {
+describeTestCases('given $name', ({name, baseUrl, org, username, password, project} : CaseConfig) => {
   test('canary verifies test infrastructure', () => {
     expect(true).toBe(true);
   });
@@ -82,7 +86,7 @@ describeTestCases('given $name', ({name, baseUrl, org, username, password} : Cas
   let classUnderTest: GitApi;
   let repo: string;
   beforeAll(async () => {
-    const url = `${baseUrl}/${org}`
+    const url = project ? `${baseUrl}/${org}/${project}` : `${baseUrl}/${org}`
     classUnderTest = await apiFromUrl(url, {username, password})
 
     repo = `test-${makeId(10)}`
@@ -99,6 +103,8 @@ describeTestCases('given $name', ({name, baseUrl, org, username, password} : Cas
           console.log('Got repo: ', repoApi.getConfig().repo)
 
           const repoInfo: GitRepo = await repoApi.getRepoInfo()
+
+          console.log('Repo url: ' + repoApi.getConfig().url)
 
           expect(repoInfo.name).toEqual(repo)
 

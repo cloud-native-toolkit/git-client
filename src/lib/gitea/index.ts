@@ -330,12 +330,6 @@ export class Gitea extends GitBase implements GitApi {
     return GiteaEvent[eventId];
   }
 
-  getRepoApi({repo, url}: {repo?: string, url: string}): GitApi {
-    const newConfig = Object.assign({}, this.config, {repo, url})
-
-    return apiFromConfig(newConfig)
-  }
-
   async getWebhooks(): Promise<Webhook[]> {
     return get(`${this.getRepoUrl()}/hooks`)
       .auth(this.config.username, this.config.password)
@@ -402,16 +396,13 @@ export class Gitea extends GitBase implements GitApi {
       });
   }
 
-  getConfig(): TypedGitRepoConfig {
-    return this.config
-  }
-
   async getRepoInfo(): Promise<GitRepo> {
     return get(this.getRepoUrl())
       .auth(this.config.username, this.config.password)
       .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
       .accept('application/vnd.github.v3+json')
       .then(res => ({
+        id: res.body.id,
         slug: res.body.full_name,
         name: res.body.name,
         description: res.body.description,

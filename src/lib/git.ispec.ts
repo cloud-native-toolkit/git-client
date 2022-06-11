@@ -21,6 +21,7 @@ interface CaseConfig {
   org: string;
   username: string;
   password: string;
+  project?: string;
 }
 
 const getConfigValues = (name: string): CaseConfig | undefined => {
@@ -29,6 +30,7 @@ const getConfigValues = (name: string): CaseConfig | undefined => {
   const org = process.env[asKey(name, 'org')];
   const username = process.env[asKey(name, 'username')];
   const password = process.env[asKey(name, 'password')];
+  const project = process.env[asKey(name, 'project')];
 
   if (skip === 'true') {
     console.log(`${asKey(name, 'skip')} is set to true. Skipping test...`)
@@ -45,7 +47,8 @@ const getConfigValues = (name: string): CaseConfig | undefined => {
     baseUrl,
     org,
     username,
-    password
+    password,
+    project
   }
 }
 
@@ -68,6 +71,7 @@ addTestConfig('ghe');
 addTestConfig('gitlab');
 addTestConfig('gitea');
 addTestConfig('bitbucket');
+addTestConfig('azure');
 
 function makeId(length: number): string {
   const result           = [];
@@ -83,7 +87,7 @@ function makeId(length: number): string {
 
 const describeTestCases = describe.each<CaseConfig>(cases);
 
-describeTestCases('given $name', ({name, baseUrl, org, username, password} : CaseConfig) => {
+describeTestCases('given $name', ({name, baseUrl, org, username, password, project} : CaseConfig) => {
   test('canary verifies test infrastructure', () => {
     expect(true).toBe(true);
   });
@@ -92,10 +96,10 @@ describeTestCases('given $name', ({name, baseUrl, org, username, password} : Cas
   let repo: string;
   let logger: Logger;
   beforeAll(async () => {
-    const url = `${baseUrl}/${org}`
+    const url = project ? `${baseUrl}/${org}/${project}` : `${baseUrl}/${org}`
     const gitApi: GitApi = await apiFromUrl(url, {username, password})
 
-    Container.bind(Logger).factory(verboseLoggerFactory(true))
+    Container.bind(Logger).factory(verboseLoggerFactory(false))
     logger = Container.get(Logger)
 
     repo = `test-${makeId(10)}`
@@ -110,7 +114,7 @@ describeTestCases('given $name', ({name, baseUrl, org, username, password} : Cas
   afterAll(async () => {
     if (classUnderTest) {
       logger.debug('Deleting repo: ', classUnderTest.getConfig().url)
-      // await classUnderTest.deleteRepo();
+      await classUnderTest.deleteRepo();
     }
   })
 
@@ -127,11 +131,11 @@ describeTestCases('given $name', ({name, baseUrl, org, username, password} : Cas
 
         const result = await classUnderTest.createWebhook(createWebhookParams)
 
-        logger.debug('Webhook created')
+        logger.debug('Webhook created: ' + result)
 
         const webhooks: Webhook[] = await classUnderTest.getWebhooks();
         expect(webhooks.length).toEqual(1);
-      });
+      }, 10000);
     });
   });
 
@@ -249,7 +253,8 @@ const argocdResolver = (applicationPath: string): MergeResolver => {
   return async (git: SimpleGitWithApi, conflicts: string[]): Promise<{resolvedConflicts: string[], conflictErrors: Error[]}> => {
     const kustomizeYamls: string[] = conflicts.filter(f => /.*kustomization.yaml/.test(f));
 
-    console.log('Inside argocd resolver', conflicts)
+    const logger: Logger = Container.get(Logger)
+    logger.debug('Inside argocd resolver', conflicts)
 
     const processKustomizeYaml = async (kustomizeYaml: string) => {
       // get the file version that is in master
@@ -280,6 +285,7 @@ export interface IKustomization {
 export class Kustomization implements IKustomization {
   config: IKustomization;
   resources: string[];
+  logger: Logger;
 
   constructor(config?: IKustomization) {
     Object.assign(
@@ -287,6 +293,8 @@ export class Kustomization implements IKustomization {
       config && config.resources ? config : {resources: []},
       config ? {config} : {config: {apiVersion: 'kustomize.config.k8s.io/v1beta1', kind: 'Kustomization'}}
     );
+
+    this.logger = Container.get(Logger)
   }
 
   addResource(resource: string): Kustomization {
@@ -294,7 +302,7 @@ export class Kustomization implements IKustomization {
       this.resources.push(resource);
       this.resources.sort()
     } else {
-      console.log('Already contains resource', resource)
+      this.logger.debug('Already contains resource', resource)
     }
 
     return this;
@@ -388,37 +396,41 @@ export const fileExists = async (path: string): Promise<boolean> => {
 
 export const addKustomizeResource = async (kustomizeFile: string | File, path: string): Promise<boolean> => {
 
+  const logger: Logger = Container.get(Logger)
+
   const file: File = isFile(kustomizeFile) ? kustomizeFile : new File(kustomizeFile);
 
-  console.log('Loading kustomize file', kustomizeFile)
+  logger.debug('Loading kustomize file', kustomizeFile)
 
   const kustomize: Kustomization = await loadKustomize(kustomizeFile);
 
-  console.log('kustomize resources before', kustomize.resources)
+  logger.debug('kustomize resources before', kustomize.resources)
 
   if (kustomize.containsResource(path)) {
-    console.log('Already contains resource', path)
+    logger.debug('Already contains resource', path)
     return false;
   }
 
   kustomize.addResource(path);
 
-  console.log('kustomize resources after', {resources: kustomize.resources, yaml: kustomize.asYamlString()})
+  logger.debug('kustomize resources after', {resources: kustomize.resources, yaml: kustomize.asYamlString()})
 
   return file.write(kustomize.asYamlString()).then(writeResult => {
-    console.log('Write result: ', {writeResult, filename: file.filename})
+    logger.debug('Write result: ', {writeResult, filename: file.filename})
     return true
   });
 };
 
 export const loadKustomize = async (kustomizeFile: File | string): Promise<Kustomization> => {
 
+  const logger: Logger = Container.get(Logger)
+
   const file: File = isFile(kustomizeFile) ? kustomizeFile : new File(kustomizeFile);
 
-  console.log(`Loading kustomize file: ${file.filename}`)
+  logger.debug(`Loading kustomize file: ${file.filename}`)
 
   if (!await file.exists()) {
-    console.log(`Kustomize file does not exist: ${file.filename}`)
+    logger.debug(`Kustomize file does not exist: ${file.filename}`)
     return new Kustomization();
   }
 

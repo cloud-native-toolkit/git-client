@@ -105,12 +105,6 @@ abstract class GithubCommon extends GitBase implements GitApi {
 
   abstract getRepoUrl(): string;
 
-  getRepoApi({repo, url}: {repo?: string, url: string}): GitApi {
-    const newConfig = Object.assign({}, this.config, {repo, url})
-
-    return apiFromConfig(newConfig)
-  }
-
   async listFiles(): Promise<Array<{path: string, url?: string, contents?: string}>> {
     const response: Response = await this.get(`/git/trees/${this.config.branch}`);
 
@@ -362,6 +356,7 @@ abstract class GithubCommon extends GitBase implements GitApi {
       })
       .then((res: any) => {
         return ({
+          id: res.data.id,
           slug: res.data.full_name,
           name: res.data.name,
           description: res.data.description,
@@ -385,9 +380,6 @@ abstract class GithubCommon extends GitBase implements GitApi {
           Object.assign({}, {owner: this.config.owner, repo: this.config.repo}, this.buildWebhookData(options)) as any
         )
         .then(res => 'test')
-      // const response: Response = await this.post('/hooks', this.buildWebhookData(options));
-      //
-      // return response.body.id;
     } catch (err) {
       if (isResponseError(err)) {
         if (err.response.text.match(/Hook already exists/)) {
@@ -451,10 +443,6 @@ abstract class GithubCommon extends GitBase implements GitApi {
 
   getEventName(eventId: GitEvent): string {
     return GithubEvent[eventId];
-  }
-
-  getConfig(): TypedGitRepoConfig {
-    return this.config
   }
 }
 

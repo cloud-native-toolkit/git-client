@@ -1,36 +1,30 @@
+import {promises} from 'fs';
+import {Optional} from 'optional-typescript';
+import simpleGit, {SimpleGit, SimpleGitOptions, StatusResult} from 'simple-git';
 import {Container} from 'typescript-ioc';
 
 import {
-  LocalGitConfig,
+  ConflictErrors,
   GitApi,
   GitEvent,
   GitHeader,
-  WebhookParams,
-  CreatePullRequestOptions,
-  PullRequest,
-  MergePullRequestOptions,
-  UpdateAndMergePullRequestOptions,
   GitUserConfig,
+  isMergeConflict,
+  LocalGitConfig,
+  MergePullRequestOptions,
   MergeResolver,
+  PullRequest,
   SimpleGitWithApi,
-  ConflictErrors, UnresolvedConflictsError, isMergeConflict
+  UnresolvedConflictsError,
+  UpdateAndMergePullRequestOptions,
+  WebhookParams
 } from './git.api';
 import {GitHost, TypedGitRepoConfig} from './git.model';
-import {Logger} from '../util/logger';
-import simpleGit, {SimpleGit, SimpleGitOptions, StatusResult} from 'simple-git';
-import {timer} from './timer';
-import {
-  compositeRetryEvaluation,
-  noRetry,
-  EvaluateErrorForRetry,
-  RetryResult,
-  retryWithDelay
-} from '../util/retry-with-delay';
-import {isResponseError, ResponseError} from '../util/superagent-support';
 import sleep from '../util/sleep';
-import {LogResult} from 'simple-git/dist/typings/response';
-import {promises} from 'fs';
-import {join} from 'path';
+import first from '../util/first';
+import {isResponseError, ResponseError} from '../util/superagent-support';
+import {Logger} from '../util/logger';
+import {compositeRetryEvaluation, EvaluateErrorForRetry, noRetry, RetryResult} from '../util/retry-with-delay';
 
 export function isMergeError(error: Error): error is ResponseError {
 
@@ -65,13 +59,72 @@ export function isMergeError(error: Error): error is ResponseError {
   return false;
 }
 
-export abstract class GitBase extends GitApi {
+const urlWithCredentials = (url: string, credentials: string): string => {
+  if (!credentials) {
+    return url
+  }
+
+  const urlWithCredentials = new RegExp('(.*://).+@(.*)')
+  const basicUrl = new RegExp('(.*://)(.*)')
+
+  const result: Optional<string> = first(
+    [urlWithCredentials, basicUrl]
+      .filter(regex => regex.test(url))
+      .map(regex => {
+        const result = regex.exec(url)
+
+        return `${result[1]}${credentials}@${result[2]}`
+      })
+  )
+
+  return result.valueOr(url)
+}
+
+export abstract class GitBase<T extends TypedGitRepoConfig = TypedGitRepoConfig> extends GitApi<T> {
   logger: Logger;
 
-  protected constructor(public config: TypedGitRepoConfig) {
+  protected constructor(public config: T) {
     super();
 
     this.logger = Container.get(Logger);
+  }
+
+  getConfig(): T {
+    return Object.assign({}, this.config)
+  }
+
+  get repo() {
+    return this.config.repo
+  }
+
+  get host() {
+    return this.config.host
+  }
+
+  get url() {
+    return this.config.url
+  }
+
+  get owner() {
+    return this.config.owner
+  }
+
+  get username() {
+    return this.config.username
+  }
+
+  get password() {
+    return this.config.password
+  }
+
+  get branch() {
+    return this.config.branch
+  }
+
+  getRepoApi({repo, url}: { repo?: string, url: string }): GitApi {
+    const newConfig = Object.assign({}, this.config, {repo, url})
+
+    return new (Object.getPrototypeOf(this).constructor)(newConfig)
   }
 
   async clone(repoDir: string, input: LocalGitConfig): Promise<SimpleGitWithApi> {
@@ -79,8 +132,9 @@ export abstract class GitBase extends GitApi {
 
     const git: SimpleGit & {gitApi?: GitApi, repoDir?: string} = simpleGit(gitOptions);
 
-    // clone into repo dir
-    await git.clone(`https://${this.credentials()}@${this.config.host}/${this.config.owner}/${this.config.repo}`, repoDir);
+    const url = urlWithCredentials(this.config.url, this.credentials())
+
+    await git.clone(url, repoDir);
 
     await git.cwd({path: repoDir, root: true});
 
@@ -102,11 +156,11 @@ export abstract class GitBase extends GitApi {
     const resolver: MergeResolver = config.resolver || (() => Promise.resolve({resolvedConflicts: []}));
 
     try {
-      this.logger.log(`Cloning ${this.config.host}/${this.config.owner}/${this.config.repo} repo into ${repoDir}`)
+      this.logger.debug(`Cloning ${this.config.host}/${this.config.owner}/${this.config.repo} repo into ${repoDir}`)
 
       const git: SimpleGitWithApi = await this.clone(repoDir, {userConfig: options.userConfig});
 
-      this.logger.log(`Checking out branch - ${config.sourceBranch}`);
+      this.logger.debug(`Checking out branch - ${config.sourceBranch}`);
 
       await git.checkoutBranch(config.sourceBranch, `origin/${config.sourceBranch}`);
 
@@ -121,25 +175,25 @@ export abstract class GitBase extends GitApi {
       let status: StatusResult;
       do {
         status = await git.status();
-        this.logger.log(`Status after rebase:`, {status});
+        this.logger.debug(`Status after rebase:`, {status});
 
         if (status.not_added.length === 0 && status.deleted.length === 0 && status.conflicted.length === 0 && status.staged.length === 0) {
           break;
         }
 
         if (status.conflicted.length > 0) {
-          this.logger.log('  Resolving rebase conflicts');
+          this.logger.debug('  Resolving rebase conflicts');
 
           try {
             const {resolvedConflicts, conflictErrors} = await resolver(git, status.conflicted);
             if (conflictErrors && conflictErrors.length > 0) {
-              this.logger.log('  Errors resolving conflicts:', conflictErrors);
+              this.logger.debug('  Errors resolving conflicts:', conflictErrors);
               throw new ConflictErrors(conflictErrors);
             }
 
             const unresolvedConflicts: string[] = status.conflicted.filter(conflict => !resolvedConflicts.includes(conflict));
             if (unresolvedConflicts.length > 0) {
-              this.logger.log('  Unresolved conflicts:', unresolvedConflicts);
+              this.logger.debug('  Unresolved conflicts:', unresolvedConflicts);
               throw new UnresolvedConflictsError(unresolvedConflicts);
             }
 
@@ -154,7 +208,7 @@ export abstract class GitBase extends GitApi {
           }
         }
 
-        this.logger.log('Continuing rebase');
+        this.logger.debug('Continuing rebase');
         const rebaseResult = await git.rebase(['--continue']);
         if (/No changes - did you forget to use 'git add'/.test(rebaseResult)) {
           this.logger.debug('No changes after rebase. Skipping commit.')
@@ -167,7 +221,7 @@ export abstract class GitBase extends GitApi {
         return false;
       }
 
-      this.logger.log(`Pushing changes to ${config.sourceBranch} force-with-lease`)
+      this.logger.debug(`Pushing changes to ${config.sourceBranch} force-with-lease`)
       await git.push('origin', config.sourceBranch, ['--force-with-lease']);
 
     } finally {

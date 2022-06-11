@@ -1,19 +1,25 @@
-import {get, put, post, delete as deleteUrl, Response} from 'superagent';
+import {delete as deleteUrl, get, post, put, Response} from 'superagent';
 
 import {
   CreatePullRequestOptions,
   CreateRepoOptions,
-  CreateWebhook, DeleteBranchOptions, GetPullRequestOptions,
-  GitApi, GitBranch,
+  CreateWebhook,
+  DeleteBranchOptions,
+  GetPullRequestOptions,
+  GitApi,
+  GitBranch,
   GitEvent,
-  GitHeader, MergeConflict, MergePullRequestOptions, PullRequest,
-  UnknownWebhookError, UpdatePullRequestBranchOptions,
+  GitHeader,
+  MergeConflict,
+  MergePullRequestOptions,
+  PullRequest,
+  UnknownWebhookError,
+  UpdatePullRequestBranchOptions,
   WebhookAlreadyExists
 } from '../git.api';
 import {GitBase} from '../git.base';
-import {GitRepo, RepoNotFound, TypedGitRepoConfig, UserNotFound, Webhook} from '../git.model';
+import {GitRepo, RepoNotFound, TypedGitRepoConfig, Webhook} from '../git.model';
 import {isResponseError} from '../../util/superagent-support';
-import {apiFromConfig} from '../util';
 import first from '../../util/first';
 import sleep from '../../util/sleep';
 
@@ -79,10 +85,6 @@ export class Gitlab extends GitBase implements GitApi {
 
   constructor(config: TypedGitRepoConfig) {
     super(config);
-  }
-
-  getConfig(): TypedGitRepoConfig {
-    return this.config
   }
 
   getBaseUrl(): string {
@@ -383,18 +385,13 @@ export class Gitlab extends GitBase implements GitApi {
       })
   }
 
-  getRepoApi({repo, url}: {repo?: string, url: string}): GitApi {
-    const newConfig = Object.assign({}, this.config, {repo, url})
-
-    return apiFromConfig(newConfig)
-  }
-
   async getRepoInfo(): Promise<GitRepo> {
     return get(this.getRepoUrl())
       .set('Private-Token', this.config.password)
       .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
       .accept('application/json')
       .then(res => ({
+        id: res.body.id,
         slug: res.body.path_with_namespace,
         name: res.body.path,
         description: res.body.description,

@@ -63,10 +63,6 @@ export class Bitbucket extends GitBase implements GitApi {
     super(config);
   }
 
-  getConfig(): TypedGitRepoConfig {
-    return this.config
-  }
-
   getBaseUrl(): string {
     return `${this.config.protocol}://api.bitbucket.org/2.0`;
   }
@@ -302,12 +298,6 @@ export class Bitbucket extends GitBase implements GitApi {
     return this;
   }
 
-  getRepoApi({repo, url}: { repo?: string, url: string }): GitApi {
-    const newConfig = Object.assign({}, this.config, {repo, url})
-
-    return apiFromConfig(newConfig)
-  }
-
   deleteRepo(): Promise<GitApi> {
     return deleteUrl(this.getRepoUrl())
       .auth(this.config.username, this.config.password)
@@ -333,6 +323,7 @@ export class Bitbucket extends GitBase implements GitApi {
       .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
       .accept('application/json')
       .then(res => ({
+        id: res.body.id,
         slug: res.body.full_name,
         name: res.body.name,
         description: res.body.description,

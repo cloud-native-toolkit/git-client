@@ -5,7 +5,8 @@ export enum GitHost {
   ghe = 'GHE',
   gogs = 'Gogs',
   bitbucket = 'Bitbucket',
-  gitea = 'Gitea'
+  gitea = 'Gitea',
+  azure = 'Azure DevOps'
 }
 
 export interface GitLocalRepoConfig {
@@ -75,6 +76,7 @@ export interface Webhook {
 }
 
 export interface GitRepo {
+  id: string;
   slug: string;
   name: string;
   description: string;

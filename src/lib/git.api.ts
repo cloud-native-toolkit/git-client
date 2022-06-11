@@ -1,4 +1,4 @@
-import {SimpleGit, SimpleGitOptions} from 'simple-git';
+import {SimpleGit} from 'simple-git';
 
 import {GitHost, GitRepo, TypedGitRepoConfig, Webhook} from './git.model';
 import {EvaluateErrorForRetry} from '../util/retry-with-delay';
@@ -99,9 +99,11 @@ export class UnresolvedConflictsError extends Error {
 
 export type MergeResolver = (git: SimpleGitWithApi, conflicts: string[]) => Promise<{resolvedConflicts: string[], conflictErrors?: Error[]}>;
 
+export type MergeMethod = 'merge' | 'squash' | 'rebase'
+
 export interface MergePullRequestOptions extends BaseOptions {
   pullNumber: number;
-  method: 'merge' | 'squash' | 'rebase';
+  method: MergeMethod;
   resolver?: MergeResolver;
   title?: string;
   message?: string;
@@ -178,10 +180,10 @@ export interface CreateRepoOptions {
   privateRepo?: boolean;
 }
 
-export abstract class GitApi extends LocalGitApi {
+export abstract class GitApi<T extends TypedGitRepoConfig = TypedGitRepoConfig> extends LocalGitApi {
   abstract getType(): GitHost;
 
-  abstract getConfig(): TypedGitRepoConfig;
+  abstract getConfig(): T;
 
   abstract getWebhooks(): Promise<Webhook[]>;
 
