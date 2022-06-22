@@ -298,7 +298,7 @@ abstract class GithubCommon extends GitBase implements GitApi {
   async createRepo({name, privateRepo = false, autoInit = true}: CreateRepoOptions): Promise<GitApi> {
     const errorHandler = (err) => {
       if (/Bad credentials/.test(err.message)) {
-        throw new BadCredentials('deleteRepo', this.config.type, err)
+        throw new BadCredentials('createRepo', this.config.type, err)
       } else {
         throw err;
       }

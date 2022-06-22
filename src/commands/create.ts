@@ -7,14 +7,29 @@ import {
   parseHostAndOrgFromUrl
 } from './support/middleware';
 import {forCredentials} from './support/checks';
+import {isDefinedAndNotNull, isUndefinedOrNull} from '../util/object-util';
 
-const defaultToPrivateRepo = () => {
+const updatePrivateRepo = () => {
   return yargs => {
-    if (!yargs.publicRepo && !yargs.privateRepo) {
+    if (isUndefinedOrNull(yargs.publicRepo) && isUndefinedOrNull(yargs.privateRepo)) {
       return {privateRepo: true}
+    } else if (isDefinedAndNotNull(yargs.publicRepo) && isUndefinedOrNull(yargs.privateRepo)) {
+      return {privateRepo: !yargs.publicRepo}
     }
 
     return {}
+  }
+}
+
+const publicPrivateRepo = () => {
+  return yargs => {
+    if (isDefinedAndNotNull(yargs.publicRepo) && isDefinedAndNotNull(yargs.privateRepo)) {
+      if (yargs.publicRepo === yargs.privateRepo) {
+        throw new Error('The privateRepo and publicRepo values are conflicting.')
+      }
+    }
+
+    return true
   }
 }
 
@@ -36,13 +51,11 @@ export const builder = (yargs: Argv<any>) => yargs
     type: 'boolean',
     alias: ['private'],
     description: 'Flag indicating the repository should be private. Mutually exclusive with `publicRepo` flag.',
-    conflicts: 'publicRepo'
   })
   .option('publicRepo', {
     type: 'boolean',
     alias: ['public'],
     description: 'Flag indicating the repository should be public. Mutually exclusive with `privateRepo` flag.',
-    conflicts: 'privateRepo'
   })
   .option('gitUrl', {
     type: 'string',
@@ -78,8 +91,9 @@ export const builder = (yargs: Argv<any>) => yargs
   .middleware(loadFromEnv('token', 'GIT_TOKEN'), true)
   .middleware(loadCredentialsFromFile(), true)
   .middleware(defaultOwnerToUsername(), true)
-  .middleware(defaultToPrivateRepo(), true)
+  .middleware(updatePrivateRepo(), true)
   .check(forCredentials())
+  .check(publicPrivateRepo())
 export const handler =  async (argv: Arguments<CreateArgs & {debug: boolean}>) => {
 
   const credentials = {username: argv.username, password: argv.token}
@@ -96,7 +110,7 @@ export const handler =  async (argv: Arguments<CreateArgs & {debug: boolean}>) =
     const repoApi: GitApi = await orgApi.createRepo({
       name: argv.name,
       autoInit: argv.autoInit,
-      privateRepo: argv.privateRepo
+      privateRepo:  argv.privateRepo
     })
 
     console.log(`  Repo created: ${repoApi.getConfig().url}`)
