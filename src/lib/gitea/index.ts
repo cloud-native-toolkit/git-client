@@ -357,7 +357,7 @@ export class Gitea extends GitBase implements GitApi {
       throw err
     }
 
-    if (this.config.owner === this.config.username) {
+    if (this.personalOrg) {
       return post(`${this.getBaseUrl()}/user/repos`)
         .auth(this.config.username, this.config.password)
         .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)

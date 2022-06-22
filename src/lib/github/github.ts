@@ -304,7 +304,7 @@ abstract class GithubCommon extends GitBase implements GitApi {
       }
     }
 
-    if (this.config.owner === this.config.username) {
+    if (this.personalOrg) {
       return this.octokit
         .request('POST /user/repos', {
           name: name,

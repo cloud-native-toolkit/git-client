@@ -121,6 +121,10 @@ export abstract class GitBase<T extends TypedGitRepoConfig = TypedGitRepoConfig>
     return this.config.branch
   }
 
+  get personalOrg() {
+    return !this.owner || ((this.owner || "").toLocaleLowerCase() === (this.username || "").toLocaleLowerCase())
+  }
+
   getRepoApi({repo, url}: { repo?: string, url: string }): GitApi {
     const newConfig = Object.assign({}, this.config, {repo, url})
 

@@ -324,7 +324,7 @@ export class Gitlab extends GitBase implements GitApi {
       default_branch: 'main'
     } : {})
 
-    if (this.config.owner === this.config.username) {
+    if (this.personalOrg) {
       return post(`${this.getBaseUrl()}/projects`)
         .set('Private-Token', this.config.password)
         .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
