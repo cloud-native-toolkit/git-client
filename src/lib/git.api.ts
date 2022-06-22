@@ -213,5 +213,7 @@ export abstract class GitApi<T extends TypedGitRepoConfig = TypedGitRepoConfig> 
 
   abstract deleteRepo(): Promise<GitApi>;
 
+  abstract listRepos(): Promise<string[]>;
+
   abstract getRepoInfo(): Promise<GitRepo>;
 }

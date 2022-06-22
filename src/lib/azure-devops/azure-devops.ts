@@ -98,6 +98,14 @@ export class AzureDevops extends GitBase<AzureTypedGitRepoConfig> implements Git
     return gitApi
   }
 
+  async listRepos(): Promise<string[]> {
+    const api = await this.getGitApi()
+
+    return api
+      .getRepositories(this.project)
+      .then(result => result.map(repo => repo.remoteUrl))
+  }
+
   async createFile(path: string, content: string, comment?: string, branch?: string): Promise<GitApi> {
     const api = await this.getGitApi()
 

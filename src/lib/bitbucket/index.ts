@@ -286,6 +286,30 @@ export class Bitbucket extends GitBase implements GitApi {
     return repoApi;
   }
 
+  async listRepos(): Promise<string[]> {
+    const result: string[] = []
+
+    let url = `${this.getBaseUrl()}/repositories/${this.config.owner}`
+    while (url) {
+      const {next, repos} = await get(url)
+        .set('Content-Type', 'application/json')
+        .auth(this.config.username, this.config.password)
+        .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
+        .accept('application/json')
+        .then(res => {
+          return {
+            next: res.body.next,
+            repos: res.body.values.map((repo: {links: {html: {href: string}}}) => repo.links.html.href)
+          }
+        })
+
+      url = next
+      result.push(...repos)
+    }
+
+    return result
+  }
+
   async createFile(filename: string, contents: string): Promise<GitApi> {
     const filepath = filename.startsWith('/') ? filename : `/${filename}`
 

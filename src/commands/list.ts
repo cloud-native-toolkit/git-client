@@ -1,21 +1,21 @@
 import {Arguments, Argv} from 'yargs';
-import {apiFromUrl, GitApi, isGitError} from '../lib';
+import {apiFromPartialConfig, apiFromUrl, GitApi, isGitError} from '../lib';
 import {
   defaultOwnerToUsername,
   loadCredentialsFromFile,
   loadFromEnv,
-  parseHostAndOrgFromUrl,
-  repoNameToGitUrl
+  parseHostAndOrgFromUrl
 } from './support/middleware';
 import {forCredentials} from './support/checks';
 
-export const command = 'delete [gitUrl]'
-export const desc = 'Deletes a hosted git repo';
+export const command = 'list'
+export const aliases = []
+export const desc = 'Lists the hosted git repos for the org or user';
 export const builder = (yargs: Argv<any>) => yargs
-  .positional('gitUrl', {
+  .option('gitUrl', {
     type: 'string',
-    description: 'The git url of the git repository that will be deleted',
-    demandOption: true
+    alias: ['g'],
+    description: 'The git url of the org or another repo in the same org. Either gitUrl OR host and owner must be provided.'
   })
   .option('host', {
     type: 'string',
@@ -30,7 +30,7 @@ export const builder = (yargs: Argv<any>) => yargs
   .option('username', {
     type: 'string',
     alias: ['u'],
-    description: 'The username used to create the git repository. The value can also be provided via the `GIT_USERNAME` environment variable.',
+    description: 'The username used to create the git repository. The value can also be provided via the `GIT_USERNAME` environment variable.'
   })
   .option('token', {
     type: 'string',
@@ -46,35 +46,35 @@ export const builder = (yargs: Argv<any>) => yargs
   .middleware(loadFromEnv('token', 'GIT_TOKEN'), true)
   .middleware(loadCredentialsFromFile(), true)
   .middleware(defaultOwnerToUsername(), true)
-  .middleware(repoNameToGitUrl(), true)
   .check(forCredentials())
-export const handler =  async (argv: Arguments<DeleteArgs & {debug: boolean}>) => {
+export const handler =  async (argv: Arguments<ListArgs & {debug: boolean}>) => {
 
   const credentials = {username: argv.username, password: argv.token}
 
   try {
-    const repoApi: GitApi = await apiFromUrl(argv.gitUrl, credentials)
-    console.log(`Deleting repo: ${argv.gitUrl}`)
+    const orgApi: GitApi = argv.gitUrl
+      ? await apiFromUrl(argv.gitUrl, credentials)
+      : await apiFromPartialConfig({host: argv.host, org: argv.owner}, credentials)
 
-    await repoApi.deleteRepo()
+    const repos: string[] = await orgApi.listRepos()
 
-    console.log(`  Repo deleted: ${argv.gitUrl}`)
+    repos.forEach(repo => console.log(repo))
   } catch (err) {
     if (isGitError(err)) {
       console.error(err.message)
     } else if (argv.debug) {
-      console.error('Error deleting repo', err)
+      console.error('Error listing repos', err)
     } else {
-      console.error('Error deleting repo')
+      console.error('Error listing repos')
     }
     process.exit(1)
   }
 }
 
-interface DeleteArgs {
-  gitUrl: string;
-  username: string;
-  token: string;
+interface ListArgs {
+  gitUrl?: string;
   host?: string;
   owner?: string;
+  username: string;
+  token: string;
 }

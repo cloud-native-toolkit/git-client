@@ -1,17 +1,13 @@
 import {Arguments, Argv} from 'yargs';
 import {apiFromUrl, ErrorType, GitApi, GitRepo, isGitError} from '../lib';
-
-const loadFromEnv = (name: string, envName: string) => {
-  return yargs => {
-    const result = {}
-
-    if (!yargs[name]) {
-      result[name] = process.env[envName]
-    }
-
-    return result
-  }
-}
+import {forCredentials} from './support/checks';
+import {
+  defaultOwnerToUsername,
+  loadCredentialsFromFile,
+  loadFromEnv,
+  parseHostAndOrgFromUrl,
+  repoNameToGitUrl
+} from './support/middleware';
 
 export const command = 'exists [gitUrl]'
 export const desc = 'Checks if a hosted git repo exists';
@@ -50,33 +46,14 @@ export const builder = (yargs: Argv<any>) => yargs
     description: 'Flag indicating JSON output should be suppressed.',
     default: false
   })
-  .middleware(loadFromEnv('host', 'GIT_HOST'))
-  .middleware(loadFromEnv('username', 'GIT_USERNAME'))
-  .middleware(loadFromEnv('token', 'GIT_TOKEN'))
-  .middleware(yargs => {
-    if (!yargs.owner) {
-      return {owner: yargs.username}
-    }
-
-    return {}
-  })
-  .middleware(yargs => {
-    if (!/^https?/.test(yargs.gitUrl) && ~/^git@/.test(yargs.gitUrl) && !!yargs.host) {
-      return {gitUrl: `https://${yargs.host}/${yargs.owner}/${yargs.gitUrl}`}
-    }
-
-    return {}
-  })
-  .check(yargs => {
-    if (!yargs.username) {
-      throw new Error('Git username is required. The value can be provided in the `username` argument or `GIT_USERNAME` environment variable')
-    }
-    if (!yargs.token) {
-      throw new Error('Git token is required. The value can be provided in the `token` argument or `GIT_TOKEN` environment variable')
-    }
-
-    return true
-  })
+  .middleware(parseHostAndOrgFromUrl(), true)
+  .middleware(loadFromEnv('host', 'GIT_HOST'), true)
+  .middleware(loadFromEnv('username', 'GIT_USERNAME'), true)
+  .middleware(loadFromEnv('token', 'GIT_TOKEN'), true)
+  .middleware(loadCredentialsFromFile(), true)
+  .middleware(defaultOwnerToUsername(), true)
+  .middleware(repoNameToGitUrl(), true)
+  .check(forCredentials())
 export const handler =  async (argv: Arguments<ExistsArgs & {debug: boolean}>) => {
 
   const credentials = {username: argv.username, password: argv.token}

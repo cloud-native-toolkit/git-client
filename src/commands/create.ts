@@ -1,15 +1,20 @@
 import {Arguments, Argv} from 'yargs';
 import {apiFromPartialConfig, apiFromUrl, GitApi, isGitError} from '../lib';
+import {
+  defaultOwnerToUsername,
+  loadCredentialsFromFile,
+  loadFromEnv,
+  parseHostAndOrgFromUrl
+} from './support/middleware';
+import {forCredentials} from './support/checks';
 
-const loadFromEnv = (name: string, envName: string) => {
+const defaultToPrivateRepo = () => {
   return yargs => {
-    const result = {}
-
-    if (!yargs[name]) {
-      result[name] = process.env[envName]
+    if (!yargs.publicRepo && !yargs.privateRepo) {
+      return {privateRepo: true}
     }
 
-    return result
+    return {}
   }
 }
 
@@ -67,37 +72,14 @@ export const builder = (yargs: Argv<any>) => yargs
     type: 'boolean',
     description: 'Display debug information'
   })
-  .middleware(loadFromEnv('host', 'GIT_HOST'))
-  .middleware(loadFromEnv('username', 'GIT_USERNAME'))
-  .middleware(loadFromEnv('token', 'GIT_TOKEN'))
-  .middleware(yargs => {
-    if (!yargs.owner) {
-      return {owner: yargs.username}
-    }
-
-    return {}
-  })
-  .middleware(yargs => {
-    if (!yargs.publicRepo && !yargs.privateRepo) {
-      return {privateRepo: true}
-    }
-
-    return {}
-  })
-  .check(yargs => {
-    if (!yargs.username) {
-      throw new Error('Git username is required. The value can be provided in the `username` argument or `GIT_USERNAME` environment variable')
-    }
-    if (!yargs.token) {
-      throw new Error('Git token is required. The value can be provided in the `token` argument or `GIT_TOKEN` environment variable')
-    }
-
-    if (!yargs.gitUrl && !yargs.host && !yargs.owner) {
-      throw new Error('Either the `gitUrl` or the `host` and `owner` must be provided')
-    }
-
-    return true
-  })
+  .middleware(parseHostAndOrgFromUrl(), true)
+  .middleware(loadFromEnv('host', 'GIT_HOST'), true)
+  .middleware(loadFromEnv('username', 'GIT_USERNAME'), true)
+  .middleware(loadFromEnv('token', 'GIT_TOKEN'), true)
+  .middleware(loadCredentialsFromFile(), true)
+  .middleware(defaultOwnerToUsername(), true)
+  .middleware(defaultToPrivateRepo(), true)
+  .check(forCredentials())
 export const handler =  async (argv: Arguments<CreateArgs & {debug: boolean}>) => {
 
   const credentials = {username: argv.username, password: argv.token}

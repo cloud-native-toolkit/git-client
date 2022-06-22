@@ -349,39 +349,35 @@ export class Gitea extends GitBase implements GitApi {
   }
 
   async createRepo({name, privateRepo = false, autoInit = true}: CreateRepoOptions): Promise<GitApi> {
-    const handleError = (err) => {
-      if (/Unauthorized/.test(err.message)) {
-        throw new BadCredentials('createRepo', this.config.type, err)
-      }
+    const url: string = this.personalOrg ? `${this.getBaseUrl()}/user/repos` : `${this.getBaseUrl()}/orgs/${this.config.owner}/repos`
 
-      throw err
-    }
+    return post(url)
+      .auth(this.config.username, this.config.password)
+      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
+      .accept('application/vnd.github.v3+json')
+      .send({
+        name: name,
+        private: privateRepo,
+        auto_init: autoInit
+      })
+      .then((res: Response) => this.getRepoApi({repo: name, url: res.body.html_url}))
+      .catch((err: Error) => {
+        if (/Unauthorized/.test(err.message)) {
+          throw new BadCredentials('createRepo', this.config.type, err)
+        }
 
-    if (this.personalOrg) {
-      return post(`${this.getBaseUrl()}/user/repos`)
-        .auth(this.config.username, this.config.password)
-        .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
-        .accept('application/vnd.github.v3+json')
-        .send({
-          name: name,
-          private: privateRepo,
-          auto_init: autoInit
-        })
-        .then((res: Response) => this.getRepoApi({repo: name, url: res.body.html_url}))
-        .catch(handleError)
-    } else {
-      return post(`${this.getBaseUrl()}/orgs/${this.config.owner}/repos`)
-        .auth(this.config.username, this.config.password)
-        .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
-        .accept('application/vnd.github.v3+json')
-        .send({
-          name: name,
-          private: privateRepo,
-          auto_init: autoInit
-        })
-        .then((res: Response) => this.getRepoApi({repo: name, url: res.body.html_url}))
-        .catch(handleError)
-    }
+        throw err
+      })
+  }
+
+  async listRepos(): Promise<string[]> {
+    const url: string = this.personalOrg ? `${this.getBaseUrl()}/user/repos` : `${this.getBaseUrl()}/orgs/${this.config.owner}/repos`
+
+    return get(url)
+      .auth(this.config.username, this.config.password)
+      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
+      .accept('application/vnd.github.v3+json')
+      .then((res: Response) => res.body.map(repo => repo.html_url))
   }
 
   async deleteRepo(): Promise<GitApi> {

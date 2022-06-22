@@ -359,6 +359,16 @@ export class Gitlab extends GitBase implements GitApi {
     }
   }
 
+  async listRepos(): Promise<string[]> {
+    const url: string = this.personalOrg ? `${this.getBaseUrl()}/users/${this.username}/projects` : `${this.getBaseUrl()}/groups/${this.owner}/projects`
+
+    return get(url)
+      .set('Private-Token', this.config.password)
+      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
+      .accept('application/json')
+      .then(res => res.body.map(repo => repo.http_url_to_repo))
+  }
+
   async deleteRepo(): Promise<GitApi> {
     // const repoId: string = await this.getRepoId();
 

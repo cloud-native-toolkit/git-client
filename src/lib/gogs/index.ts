@@ -302,4 +302,8 @@ export class Gogs extends GitBase implements GitApi {
   async getBranches(): Promise<GitBranch[]> {
     throw new Error('method not implemented: getBranches')
   }
+
+  listRepos(): Promise<string[]> {
+    return Promise.resolve([]);
+  }
 }

@@ -393,6 +393,42 @@ abstract class GithubCommon extends GitBase implements GitApi {
     }
   }
 
+  async listRepos(): Promise<string[]> {
+    if (this.personalOrg) {
+      return this.octokit
+        .request(
+          'GET /users/{username}/repos',
+          {
+            username: this.username
+          }
+        )
+        .then(res => res.data.map(repo => repo.html_url))
+        .catch(err => {
+          if (/Bad credentials/.test(err.message)) {
+            throw new BadCredentials('listRepos', this.config.type, err)
+          } else {
+            throw err
+          }
+        })
+    } else {
+      return this.octokit
+        .request(
+          'GET /orgs/{org}/repos',
+          {
+            org: this.owner
+          }
+        )
+        .then(res => res.data.map(repo => repo.html_url))
+        .catch(err => {
+          if (/Bad credentials/.test(err.message)) {
+            throw new BadCredentials('listRepos', this.config.type, err)
+          } else {
+            throw err
+          }
+        })
+    }
+  }
+
   async getWebhooks(): Promise<Webhook[]> {
     return this.octokit.request(`GET ${this.getRepoUri()}/hooks`)
       .then(res => res.data) as Promise<any>
