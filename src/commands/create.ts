@@ -4,7 +4,7 @@ import {
   defaultOwnerToUsername,
   loadCredentialsFromFile,
   loadFromEnv,
-  parseHostOrgAndProjectFromUrl
+  parseHostOrgAndProjectFromUrl, repoNameToGitUrl
 } from './support/middleware';
 import {forAzureDevOpsProject, forCredentials} from './support/checks';
 import {isDefinedAndNotNull, isUndefinedOrNull} from '../util/object-util';
@@ -75,7 +75,7 @@ export const builder = (yargs: Argv<any>) => yargs
   .option('project', {
     type: 'string',
     alias: ['p'],
-    description: 'The project within the organization where the repository will be provisioned. (Primarily for Azure DevOps git repositories.)'
+    description: 'The project within the organization where the repository will be provisioned. The value can be provided as a `GIT_PROJECT` environment variable. (Primarily for Azure DevOps git repositories.)'
   })
   .option('username', {
     type: 'string',
@@ -92,11 +92,13 @@ export const builder = (yargs: Argv<any>) => yargs
   })
   .middleware(parseHostOrgAndProjectFromUrl(), true)
   .middleware(loadFromEnv('host', 'GIT_HOST'), true)
+  .middleware(loadFromEnv('project', 'GIT_PROJECT'), true)
   .middleware(loadFromEnv('username', 'GIT_USERNAME'), true)
   .middleware(loadFromEnv('token', 'GIT_TOKEN'), true)
   .middleware(loadCredentialsFromFile(), true)
   .middleware(defaultOwnerToUsername(), true)
   .middleware(updatePrivateRepo(), true)
+  .middleware(repoNameToGitUrl(), true)
   .check(forCredentials())
   .check(forAzureDevOpsProject())
   .check(publicPrivateRepo())

@@ -46,9 +46,11 @@ export const loadCredentialsFromFile = () => {
     }
 
     if (!yargs.host) {
+      console.log('Host not set!!!')
       return {}
     }
 
+    console.log('Loading config for host: '  + yargs.host)
     try {
       const configPath = join(homedir(), '.gitu-config')
       if (existsSync(configPath)) {
@@ -72,7 +74,11 @@ export const loadCredentialsFromFile = () => {
 export const repoNameToGitUrl = () => {
   return yargs => {
     if (!/^https?/.test(yargs.gitUrl) && ~/^git@/.test(yargs.gitUrl) && !!yargs.host) {
-      return {gitUrl: `https://${yargs.host}/${yargs.owner}/${yargs.gitUrl}`}
+      if (yargs.host === 'dev.azure.com') {
+        return {gitUrl: `https://${yargs.host}/${yargs.owner}/${yargs.project}/_git/${yargs.gitUrl}`}
+      } else {
+        return {gitUrl: `https://${yargs.host}/${yargs.owner}/${yargs.gitUrl}`}
+      }
     }
 
     return {}

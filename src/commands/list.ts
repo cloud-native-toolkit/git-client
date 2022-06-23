@@ -4,17 +4,16 @@ import {
   defaultOwnerToUsername,
   loadCredentialsFromFile,
   loadFromEnv,
-  parseHostOrgAndProjectFromUrl
+  parseHostOrgAndProjectFromUrl, repoNameToGitUrl
 } from './support/middleware';
-import {forCredentials} from './support/checks';
+import {forAzureDevOpsProject, forCredentials} from './support/checks';
 
-export const command = 'list'
+export const command = 'list [gitUrl]'
 export const aliases = []
 export const desc = 'Lists the hosted git repos for the org or user';
 export const builder = (yargs: Argv<any>) => yargs
-  .option('gitUrl', {
+  .positional('gitUrl', {
     type: 'string',
-    alias: ['g'],
     description: 'The git url of the org or another repo in the same org. Either gitUrl OR host and owner must be provided.'
   })
   .option('host', {
@@ -26,6 +25,11 @@ export const builder = (yargs: Argv<any>) => yargs
     type: 'string',
     alias: ['o'],
     description: 'The owner/org for the git repo on the git server. If not provided the value will default to the `username` value.'
+  })
+  .option('project', {
+    type: 'string',
+    alias: ['p'],
+    description: 'The project within the organization where the repository will be provisioned. The value can be provided as a `GIT_PROJECT` environment variable. (Primarily for Azure DevOps git repositories.)'
   })
   .option('username', {
     type: 'string',
@@ -42,10 +46,13 @@ export const builder = (yargs: Argv<any>) => yargs
   })
   .middleware(parseHostOrgAndProjectFromUrl(), true)
   .middleware(loadFromEnv('host', 'GIT_HOST'), true)
+  .middleware(loadFromEnv('project', 'GIT_PROJECT'), true)
   .middleware(loadFromEnv('username', 'GIT_USERNAME'), true)
   .middleware(loadFromEnv('token', 'GIT_TOKEN'), true)
   .middleware(loadCredentialsFromFile(), true)
   .middleware(defaultOwnerToUsername(), true)
+  .middleware(repoNameToGitUrl(), true)
+  .check(forAzureDevOpsProject())
   .check(forCredentials())
 export const handler =  async (argv: Arguments<ListArgs & {debug: boolean}>) => {
 

@@ -1,6 +1,6 @@
 import {Arguments, Argv} from 'yargs';
 import {apiFromUrl, ErrorType, GitApi, GitRepo, isGitError} from '../lib';
-import {forCredentials} from './support/checks';
+import {forAzureDevOpsProject, forCredentials} from './support/checks';
 import {
   defaultOwnerToUsername,
   loadCredentialsFromFile,
@@ -27,6 +27,11 @@ export const builder = (yargs: Argv<any>) => yargs
     alias: ['o'],
     description: 'The owner/org for the git repo on the git server. If not provided the value will default to the `username` value.'
   })
+  .option('project', {
+    type: 'string',
+    alias: ['p'],
+    description: 'The project within the organization where the repository will be provisioned. The value can be provided as a `GIT_PROJECT` environment variable. (Primarily for Azure DevOps git repositories.)'
+  })
   .option('username', {
     type: 'string',
     alias: ['u'],
@@ -48,11 +53,13 @@ export const builder = (yargs: Argv<any>) => yargs
   })
   .middleware(parseHostOrgAndProjectFromUrl(), true)
   .middleware(loadFromEnv('host', 'GIT_HOST'), true)
+  .middleware(loadFromEnv('project', 'GIT_PROJECT'), true)
   .middleware(loadFromEnv('username', 'GIT_USERNAME'), true)
   .middleware(loadFromEnv('token', 'GIT_TOKEN'), true)
   .middleware(loadCredentialsFromFile(), true)
   .middleware(defaultOwnerToUsername(), true)
   .middleware(repoNameToGitUrl(), true)
+  .check(forAzureDevOpsProject())
   .check(forCredentials())
 export const handler =  async (argv: Arguments<ExistsArgs & {debug: boolean}>) => {
 
@@ -92,4 +99,5 @@ interface ExistsArgs {
   quiet?: boolean;
   host?: string;
   owner?: string;
+  project?: string;
 }
