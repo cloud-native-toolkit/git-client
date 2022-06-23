@@ -46,11 +46,9 @@ export const loadCredentialsFromFile = () => {
     }
 
     if (!yargs.host) {
-      console.log('Host not set!!!')
       return {}
     }
 
-    console.log('Loading config for host: '  + yargs.host)
     try {
       const configPath = join(homedir(), '.gitu-config')
       if (existsSync(configPath)) {
