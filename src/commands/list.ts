@@ -4,7 +4,7 @@ import {
   defaultOwnerToUsername,
   loadCredentialsFromFile,
   loadFromEnv,
-  parseHostAndOrgFromUrl
+  parseHostOrgAndProjectFromUrl
 } from './support/middleware';
 import {forCredentials} from './support/checks';
 
@@ -40,7 +40,7 @@ export const builder = (yargs: Argv<any>) => yargs
     type: 'boolean',
     description: 'Display debug information'
   })
-  .middleware(parseHostAndOrgFromUrl(), true)
+  .middleware(parseHostOrgAndProjectFromUrl(), true)
   .middleware(loadFromEnv('host', 'GIT_HOST'), true)
   .middleware(loadFromEnv('username', 'GIT_USERNAME'), true)
   .middleware(loadFromEnv('token', 'GIT_TOKEN'), true)

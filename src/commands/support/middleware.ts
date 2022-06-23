@@ -79,19 +79,32 @@ export const repoNameToGitUrl = () => {
   }
 }
 
-export const parseHostAndOrgFromUrl = () => {
+export const parseHostOrgAndProjectFromUrl = () => {
   return yargs => {
     if (!yargs.gitUrl) {
       return {}
     }
 
-    const regex = new RegExp('https?://([^/]+)/([^/]+/.*)')
+    const regex = new RegExp('https?://([^/]+)/([^/]+)/(.*)')
 
     if (regex.test(yargs.gitUrl)) {
       const result = regex.exec(yargs.gitUrl)
 
       const host = result[1].includes('@') ? result[1].split('@')[1] : result[1]
       const owner = result[2]
+      const remainder = result[3]
+
+      if (host.toLowerCase() === 'dev.azure.com') {
+        const azureRegEx = new RegExp('([^/]+)/_git/([^/]+)')
+
+        const project = azureRegEx.test(remainder) ? azureRegEx.exec(remainder)[1] : remainder
+
+        return {
+          host,
+          owner,
+          project
+        }
+      }
 
       return {
         host,

@@ -29,9 +29,26 @@ const API_FACTORIES = [
   return result;
 }, {})
 
+const isAzureDevOps = (host: string) => {
+  return host.toLowerCase() === 'dev.azure.com'
+}
 
-export async function apiFromPartialConfig({host, org, repo, branch}: {host: string, org: string, repo?: string, branch?: string}, credentials: {username: string, password: string}): Promise<GitApi> {
-  const url = repo ? `https://${host}/${org}/${repo}` : `https://${host}/${org}`
+const buildAzureGitUrl = (protocol: string, host: string, org: string, project?: string, repo?: string): string => {
+  const paths: string[] = [host, org, project]
+
+  const uri: string = paths
+    .filter(path => !!path)
+    .join('/')
+
+  if (repo) {
+    return `${protocol}://${uri}/_git/${repo}`
+  }
+
+  return `${protocol}://${uri}`
+}
+
+export async function apiFromPartialConfig({host, org, repo, branch, project}: {host: string, org: string, repo?: string, branch?: string, project?: string}, credentials: {username: string, password: string}): Promise<GitApi> {
+  const url: string = isAzureDevOps(host) ? buildAzureGitUrl('https', host, org, project, repo) : buildGitUrl('https', host, org, repo)
 
   return apiFromUrl(url, credentials, branch)
 }

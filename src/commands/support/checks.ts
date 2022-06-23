@@ -11,3 +11,13 @@ export const forCredentials = () => {
     return true
   }
 }
+
+export const forAzureDevOpsProject = () => {
+  return yargs => {
+    if (yargs.host === 'dev.azure.com' && !yargs.project) {
+      throw new Error('Git project is required for Azure DevOps repositories.')
+    }
+
+    return true
+  }
+}

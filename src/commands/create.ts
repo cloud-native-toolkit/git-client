@@ -4,9 +4,9 @@ import {
   defaultOwnerToUsername,
   loadCredentialsFromFile,
   loadFromEnv,
-  parseHostAndOrgFromUrl
+  parseHostOrgAndProjectFromUrl
 } from './support/middleware';
-import {forCredentials} from './support/checks';
+import {forAzureDevOpsProject, forCredentials} from './support/checks';
 import {isDefinedAndNotNull, isUndefinedOrNull} from '../util/object-util';
 
 const updatePrivateRepo = () => {
@@ -72,6 +72,11 @@ export const builder = (yargs: Argv<any>) => yargs
     alias: ['o'],
     description: 'The owner/org for the git repo on the git server. If not provided the value will default to the `username` value.'
   })
+  .option('project', {
+    type: 'string',
+    alias: ['p'],
+    description: 'The project within the organization where the repository will be provisioned. (Primarily for Azure DevOps git repositories.)'
+  })
   .option('username', {
     type: 'string',
     alias: ['u'],
@@ -85,7 +90,7 @@ export const builder = (yargs: Argv<any>) => yargs
     type: 'boolean',
     description: 'Display debug information'
   })
-  .middleware(parseHostAndOrgFromUrl(), true)
+  .middleware(parseHostOrgAndProjectFromUrl(), true)
   .middleware(loadFromEnv('host', 'GIT_HOST'), true)
   .middleware(loadFromEnv('username', 'GIT_USERNAME'), true)
   .middleware(loadFromEnv('token', 'GIT_TOKEN'), true)
@@ -93,6 +98,7 @@ export const builder = (yargs: Argv<any>) => yargs
   .middleware(defaultOwnerToUsername(), true)
   .middleware(updatePrivateRepo(), true)
   .check(forCredentials())
+  .check(forAzureDevOpsProject())
   .check(publicPrivateRepo())
 export const handler =  async (argv: Arguments<CreateArgs & {debug: boolean}>) => {
 
@@ -101,7 +107,7 @@ export const handler =  async (argv: Arguments<CreateArgs & {debug: boolean}>) =
   try {
     const orgApi: GitApi = argv.gitUrl
       ? await apiFromUrl(argv.gitUrl, credentials)
-      : await apiFromPartialConfig({host: argv.host, org: argv.owner}, credentials)
+      : await apiFromPartialConfig({host: argv.host, org: argv.owner, project: argv.project}, credentials)
 
     const type = orgApi.getConfig().type
     const owner = orgApi.getConfig().owner
@@ -131,6 +137,7 @@ interface CreateArgs {
   gitUrl?: string;
   host?: string;
   owner?: string;
+  project?: string;
   username: string;
   token: string;
   autoInit?: boolean;

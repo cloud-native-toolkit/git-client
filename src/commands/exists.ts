@@ -5,7 +5,7 @@ import {
   defaultOwnerToUsername,
   loadCredentialsFromFile,
   loadFromEnv,
-  parseHostAndOrgFromUrl,
+  parseHostOrgAndProjectFromUrl,
   repoNameToGitUrl
 } from './support/middleware';
 
@@ -46,7 +46,7 @@ export const builder = (yargs: Argv<any>) => yargs
     description: 'Flag indicating JSON output should be suppressed.',
     default: false
   })
-  .middleware(parseHostAndOrgFromUrl(), true)
+  .middleware(parseHostOrgAndProjectFromUrl(), true)
   .middleware(loadFromEnv('host', 'GIT_HOST'), true)
   .middleware(loadFromEnv('username', 'GIT_USERNAME'), true)
   .middleware(loadFromEnv('token', 'GIT_TOKEN'), true)
