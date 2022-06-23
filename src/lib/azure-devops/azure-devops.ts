@@ -182,7 +182,11 @@ export class AzureDevops extends GitBase<AzureTypedGitRepoConfig> implements Git
     const api = await this.getGitApi()
 
     const extractSlug = (remoteUrl: string) => {
-      return remoteUrl.replace(`https://${this.host}/`, '')
+      return remoteUrl.replace(new RegExp(`https://.*${this.host}/`), '')
+    }
+
+    const extractUrl = (remoteUrl: string) => {
+      return `https://${this.host}/${extractSlug(remoteUrl)}`
     }
 
     return await api
@@ -190,6 +194,7 @@ export class AzureDevops extends GitBase<AzureTypedGitRepoConfig> implements Git
       .then(result => ({
         id: result.id,
         slug: extractSlug(result.remoteUrl),
+        http_url: extractUrl(result.remoteUrl),
         name: result.name,
         description: '',
         is_private: false

@@ -400,6 +400,7 @@ export class Gitea extends GitBase implements GitApi {
       .then(res => ({
         id: res.body.id,
         slug: res.body.full_name,
+        http_url: res.body.html_url,
         name: res.body.name,
         description: res.body.description,
         is_private: res.body.private

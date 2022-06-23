@@ -403,6 +403,7 @@ export class Gitlab extends GitBase implements GitApi {
       .then(res => ({
         id: res.body.id,
         slug: res.body.path_with_namespace,
+        http_url: res.body.http_url_to_repo,
         name: res.body.path,
         description: res.body.description,
         is_private: res.body.visibility === 'private'

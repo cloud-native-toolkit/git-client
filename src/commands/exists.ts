@@ -67,9 +67,6 @@ export const handler =  async (argv: Arguments<ExistsArgs & {debug: boolean}>) =
 
   try {
     const repoApi: GitApi = await apiFromUrl(argv.gitUrl, credentials)
-    if (!argv.quiet) {
-      console.log(`Checking repo: ${argv.gitUrl}`)
-    }
 
     const repoInfo: GitRepo = await repoApi.getRepoInfo()
 

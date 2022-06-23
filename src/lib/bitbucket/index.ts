@@ -349,6 +349,7 @@ export class Bitbucket extends GitBase implements GitApi {
       .then(res => ({
         id: res.body.id,
         slug: res.body.full_name,
+        http_url: res.body.links.html.href,
         name: res.body.name,
         description: res.body.description,
         is_private: res.body.is_private

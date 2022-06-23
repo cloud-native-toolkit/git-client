@@ -358,6 +358,7 @@ abstract class GithubCommon extends GitBase implements GitApi {
         return ({
           id: res.data.id,
           slug: res.data.full_name,
+          http_url: res.data.clone_url,
           name: res.data.name,
           description: res.data.description,
           is_private: res.data.private

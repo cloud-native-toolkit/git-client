@@ -78,6 +78,7 @@ export interface Webhook {
 export interface GitRepo {
   id: string;
   slug: string;
+  http_url: string;
   name: string;
   description: string;
   is_private: boolean;
