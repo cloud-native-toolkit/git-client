@@ -162,7 +162,7 @@ export abstract class GitBase<T extends TypedGitRepoConfig = TypedGitRepoConfig>
     try {
       this.logger.debug(`Cloning ${this.config.host}/${this.config.owner}/${this.config.repo} repo into ${repoDir}`)
 
-      const git: SimpleGitWithApi = await this.clone(repoDir, {userConfig: options.userConfig});
+      const git: SimpleGitWithApi = await this.clone(repoDir, {userConfig: getUserConfig(options.userConfig)});
 
       this.logger.debug(`Checking out branch - ${config.sourceBranch}`);
 
@@ -354,3 +354,13 @@ export abstract class GitBase<T extends TypedGitRepoConfig = TypedGitRepoConfig>
   abstract getEventName(eventId: GitEvent): string;
 }
 
+const getUserConfig = (userConfig?: GitUserConfig): GitUserConfig => {
+  if (userConfig && userConfig.name && userConfig.email) {
+    return userConfig
+  }
+
+  return {
+    name: 'Cloud-Native Toolkit',
+    email: 'cloudnativetoolkit@gmail.com'
+  }
+}
