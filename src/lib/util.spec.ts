@@ -16,7 +16,7 @@ describe('util', () => {
           host,
           owner,
           repo,
-          url: url + '.git',
+          url,
         });
       });
 
@@ -48,7 +48,7 @@ describe('util', () => {
           host,
           owner,
           repo,
-          url: url + '.git',
+          url: url,
           branch,
         });
       });
@@ -68,7 +68,7 @@ describe('util', () => {
           host,
           owner,
           repo,
-          url: `${protocol}://${host}/${owner}/${repo}.git`,
+          url: `${protocol}://${host}/${owner}/${repo}`,
           username,
           password,
         });
@@ -88,7 +88,7 @@ describe('util', () => {
           host,
           owner,
           repo,
-          url: `${protocol}://${host}/${owner}/${repo}.git`,
+          url: `${protocol}://${host}/${owner}/${repo}`,
           username,
         });
       });

@@ -193,7 +193,7 @@ export function parseGitUrl(url: string): GitRepoConfig {
 
 function buildGitUrl(protocol: string, host: string, owner: string, repo?: string): string {
   if (repo) {
-    return `${protocol}://${host}/${owner}/${repo}.git`
+    return `${protocol}://${host}/${owner}/${repo}`
   }
 
   return `${protocol}://${host}/${owner}`

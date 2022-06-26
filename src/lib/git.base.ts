@@ -59,9 +59,13 @@ export function isMergeError(error: Error): error is ResponseError {
   return false;
 }
 
+const stripGitFromUrl = (url: string): string => {
+  return url.replace(/[.]git$/, '')
+}
+
 const urlWithCredentials = (url: string, credentials: string): string => {
   if (!credentials) {
-    return url
+    return stripGitFromUrl(url)
   }
 
   const urlWithCredentials = new RegExp('(.*://).+@(.*)')
@@ -77,7 +81,7 @@ const urlWithCredentials = (url: string, credentials: string): string => {
       })
   )
 
-  return result.valueOr(url)
+  return stripGitFromUrl(result.valueOr(url))
 }
 
 export abstract class GitBase<T extends TypedGitRepoConfig = TypedGitRepoConfig> extends GitApi<T> {
@@ -160,7 +164,7 @@ export abstract class GitBase<T extends TypedGitRepoConfig = TypedGitRepoConfig>
     const resolver: MergeResolver = config.resolver || (() => Promise.resolve({resolvedConflicts: []}));
 
     try {
-      this.logger.debug(`Cloning ${this.config.host}/${this.config.owner}/${this.config.repo} repo into ${repoDir}`)
+      this.logger.debug(`Cloning ${this.url} repo into ${repoDir}`)
 
       const git: SimpleGitWithApi = await this.clone(repoDir, {userConfig: getUserConfig(options.userConfig)});
 
