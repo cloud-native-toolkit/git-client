@@ -9,6 +9,7 @@ import {Gitea} from './gitea';
 import {Bitbucket} from './bitbucket';
 import {GitApi} from './git.api';
 import {AzureDevops} from './azure-devops';
+import {isDefinedAndNotNull} from '../util/object-util';
 
 const GIT_URL_PATTERNS = {
   'http': '(https{0,1})://([^/]*)/([^/]*)/{0,1}([^#]*)#{0,1}(.*)',
@@ -153,7 +154,7 @@ async function hasBody(url: string, {username, password}: {username: string, pas
 
     const result = response.body;
 
-    return !!result;
+    return isDefinedAndNotNull(result) && Object.keys(result).length > 0;
   } catch (err) {
     return false;
   }

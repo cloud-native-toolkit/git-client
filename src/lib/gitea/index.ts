@@ -1,4 +1,5 @@
-import {delete as httpDelete, get, post, Response} from 'superagent';
+import * as superagent from 'superagent';
+import {Request, Response} from 'superagent';
 import * as _ from 'lodash';
 import * as fs from 'fs';
 import * as StreamZip from 'node-stream-zip';
@@ -15,8 +16,6 @@ import {
 import {GitBase} from '../git.base';
 import {BadCredentials, GitRepo, RepoNotFound, TypedGitRepoConfig, Webhook} from '../git.model';
 import {isResponseError} from '../../util/superagent-support';
-import first from '../../util/first';
-import {apiFromConfig} from '../util';
 
 
 enum GiteaEvent {
@@ -84,6 +83,51 @@ interface Token {
   sha1: string;
 }
 
+const delay = (): number => {
+  return 3000 + Math.random() * 2000
+}
+
+const defaultRetryCallback = (err: any, res: Response): boolean => {
+
+  const errorCodes = [
+    'ETIMEDOUT',
+    'ECONNRESET',
+    'EADDRINUSE',
+    'ECONNREFUSED',
+    'EPIPE',
+    'ENOTFOUND',
+    'ENETUNREACH',
+    'EAI_AGAIN'
+  ]
+
+  if (err && err.code && ~errorCodes.indexOf(err.code)) {
+    return true;
+  }
+
+  const statuses = [
+    405,
+    408,
+    413,
+    429,
+    500,
+    502,
+    503,
+    504,
+    521,
+    522,
+    524
+  ]
+
+  if (res && res.status && ~statuses.indexOf(res.status)) {
+    return true;
+  }
+
+  if (err && "timeout" in err && err.code === "ECONNABORTED") {
+    return true;
+  }
+
+  return err && "crossDomain" in err;}
+
 export class Gitea extends GitBase implements GitApi {
   constructor(config: TypedGitRepoConfig) {
     super(config);
@@ -123,70 +167,96 @@ export class Gitea extends GitBase implements GitApi {
   //   return response.body.sha1;
   // }
 
-  async deleteBranch({branch}: DeleteBranchOptions): Promise<string> {
-    return httpDelete(`${this.getRepoUrl()}/branches/${branch}`)
-      .auth(this.config.username, this.config.password)
-      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
+  delete(url: string, retryCallback: (err: Error, res: Response) => boolean = defaultRetryCallback): Request {
+    return superagent
+      .delete(url)
+      .auth(this.username, this.password)
+      .set('User-Agent', `${this.username} via ibm-garage-cloud cli`)
       .accept('application/vnd.github.v3+json')
+      .retry(2, retryCallback)
+  }
+
+  get(url: string, retryCallback: (err: Error, res: Response) => boolean = defaultRetryCallback): Request {
+    return superagent
+      .get(url)
+      .auth(this.username, this.password)
+      .set('User-Agent', `${this.username} via ibm-garage-cloud cli`)
+      .accept('application/vnd.github.v3+json')
+      .retry(5, retryCallback)
+  }
+
+  post(url: string, retryCallback: (err: Error, res: Response) => boolean = defaultRetryCallback): Request {
+    return superagent.post(url)
+      .auth(this.username, this.password)
+      .set('User-Agent', `${this.username} via ibm-garage-cloud cli`)
+      .accept('application/vnd.github.v3+json')
+      .retry(5, retryCallback)
+  }
+
+  async deleteBranch({branch}: DeleteBranchOptions): Promise<string> {
+    return this.delete(`${this.getRepoUrl()}/branches/${branch}`)
       .then(() => 'success')
   }
 
   async getPullRequest({pullNumber}: GetPullRequestOptions): Promise<PullRequest> {
-    return get(`${this.getRepoUrl()}/pulls/${pullNumber}`)
-      .auth(this.config.username, this.config.password)
-      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
-      .accept('application/vnd.github.v3+json')
-      .then(res => ({
-        pullNumber: res.body.number,
-        sourceBranch: res.body.head.ref,
-        targetBranch: res.body.base.ref,
-      }))
-  }
-
-  async createPullRequest({title, sourceBranch, targetBranch}: CreatePullRequestOptions): Promise<PullRequest> {
-    return post(`${this.getRepoUrl()}/pulls`)
-      .auth(this.config.username, this.config.password)
-      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
-      .accept('application/vnd.github.v3+json')
-      .send({
-        title,
-        head: sourceBranch,
-        base: targetBranch,
-      })
-      .then(res => ({
-        pullNumber: res.body.number,
-        sourceBranch,
-        targetBranch
-      }))
-  }
-
-  async mergePullRequestInternal({pullNumber, method, resolver, title, message, delete_branch_after_merge = false}: MergePullRequestOptions): Promise<string> {
-    return post(`${this.getRepoUrl()}/pulls/${pullNumber}/merge`)
-      .auth(this.config.username, this.config.password)
-      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
-      .accept('application/vnd.github.v3+json')
-      .send({
-        Do: method,
-        MergeTitleField: title,
-        MergeMessageField: message,
-        delete_branch_after_merge
-      })
-      .then(() => 'success')
-      .catch(err => {
-        if (err.response.status === 405) {
-          console.log('Merge conflict: ', err)
-          throw new MergeConflict(pullNumber)
-        } else {
-          throw err
+    return this.get(`${this.getRepoUrl()}/pulls/${pullNumber}`)
+      .then(res => {
+        return {
+          pullNumber: res.body.number,
+          sourceBranch: res.body.head.ref,
+          targetBranch: res.body.base.ref,
         }
       })
   }
 
+  async createPullRequest(options: CreatePullRequestOptions): Promise<PullRequest> {
+
+    return this.post(`${this.getRepoUrl()}/pulls`)
+      .send({
+        title: options.title,
+        head: options.sourceBranch,
+        base: options.targetBranch,
+      })
+      .then(res => ({
+        pullNumber: res.body.number,
+        sourceBranch: options.sourceBranch,
+        targetBranch: options.targetBranch
+      }))
+  }
+
+  async mergePullRequestInternal(options: MergePullRequestOptions): Promise<string> {
+    return this
+      .post(
+        `${this.getRepoUrl()}/pulls/${options.pullNumber}/merge`,
+        (err: Error, res: Response) => res.status === 500 ? false : defaultRetryCallback(err, res)
+      )
+      .send({
+        Do: options.method,
+        MergeTitleField: options.title,
+        MergeMessageField: options.message,
+        delete_branch_after_merge: options.delete_branch_after_merge || false
+      })
+      .then(res => {
+        console.log('Merge result: ', JSON.stringify(res, null, 2))
+        if (res.status === 500 && /CONFLICT.*Automatic merge failed/.test(res.body.message)) {
+          console.log('Merge conflict!!')
+          throw new MergeConflict(options.pullNumber)
+        }
+
+        return 'success'
+      })
+      .catch(err => {
+        if (err.response.status === 405) {
+          console.log('Merge conflict: ', err)
+          throw new MergeConflict(options.pullNumber)
+        } else {
+          throw err
+        }
+      }) as Promise<string>
+  }
+
   async updatePullRequestBranch({pullNumber}: UpdatePullRequestBranchOptions): Promise<string> {
-    return post(`${this.getRepoUrl()}/pulls/${pullNumber}/update?style=rebase`)
-      .auth(this.config.username, this.config.password)
-      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
-      .accept('application/vnd.github.v3+json')
+    return this.post(`${this.getRepoUrl()}/pulls/${pullNumber}/update?style=rebase`)
       .then(() => 'success')
   }
 
@@ -195,10 +265,7 @@ export class Gitea extends GitBase implements GitApi {
      // const token: string = await this.getToken();
 
       const url: string = `${this.config.protocol}://${this.config.host}/api/v1/repos/${this.config.owner}/${this.config.repo}/archive/${this.config.branch}.zip`;
-      const response: Response = await get(url)
-        .auth(this.config.username, this.config.password)
-        .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
-        .accept('application/octet-stream')
+      const response: Response = await this.get(url)
         .buffer(true);
 
       const tmpFile = `${this.config.branch}-tmp.zip`;
@@ -234,10 +301,7 @@ export class Gitea extends GitBase implements GitApi {
       // const token: string = await this.getToken();
 
       const url: string = `${this.config.protocol}://${this.config.host}/api/v1/repos/${this.config.owner}/${this.config.repo}/raw/${this.config.branch}/${fileDescriptor.path}`;
-      const response: Response = await get(url)
-        .auth(this.config.username, this.config.password)
-        .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
-        .accept('text/plain');
+      const response: Response = await this.get(url)
 
       return response.text;
     } catch (err) {
@@ -250,10 +314,7 @@ export class Gitea extends GitBase implements GitApi {
     try {
       // const token: string = await this.getToken();
 
-      const response: Response = await get(this.getRepoUrl())
-        .auth(this.config.username, this.config.password)
-        .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
-        .accept('application/json');
+      const response: Response = await this.get(this.getRepoUrl())
 
       const repoResponse: RepoResponse = response.body;
 
@@ -270,10 +331,7 @@ export class Gitea extends GitBase implements GitApi {
       if( "http" === this.config.protocol.toLowerCase()){
         console.log("***** Warning! Creating webhooks for repo where urls start with http may not work.  If possible use https.");
       }
-      const response: Response = await post(this.getRepoUrl() + '/hooks')
-        .auth(this.config.username, this.config.password)
-        .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
-        .accept('application/json')
+      const response: Response = await this.post(this.getRepoUrl() + '/hooks')
         .send(this.buildWebhookData(options));
 
       return response.body.id;
@@ -331,60 +389,53 @@ export class Gitea extends GitBase implements GitApi {
   }
 
   async getWebhooks(): Promise<Webhook[]> {
-    return get(`${this.getRepoUrl()}/hooks`)
-      .auth(this.config.username, this.config.password)
-      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
-      .accept('application/vnd.github.v3+json')
-      .then(res => res.body.map(hook => ({
-        id: hook.id,
-        name: hook.id,
-        active: hook.active,
-        events: hook.events,
-        config: {
-          content_type: hook.config?.content_type,
-          url: hook.config?.url,
-          insecure_ssl: 0
+    return this.get(`${this.getRepoUrl()}/hooks`)
+      .then(res => res.body.map(hook => {
+        const webhook: Webhook = {
+          id: hook.id,
+          name: hook.id,
+          active: hook.active,
+          events: hook.events,
+          config: {
+            content_type: hook.config?.content_type,
+            url: hook.config?.url,
+            insecure_ssl: 0
+          }
         }
-      })))
+
+        return webhook
+      })) as Promise<Webhook[]>
   }
 
-  async createRepo({name, privateRepo = false, autoInit = true}: CreateRepoOptions): Promise<GitApi> {
+  async createRepo(options: CreateRepoOptions): Promise<GitApi> {
     const url: string = this.personalOrg ? `${this.getBaseUrl()}/user/repos` : `${this.getBaseUrl()}/orgs/${this.config.owner}/repos`
 
-    return post(url)
-      .auth(this.config.username, this.config.password)
-      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
-      .accept('application/vnd.github.v3+json')
+    // {name, privateRepo = false, autoInit = true}
+    return this.post(url)
       .send({
-        name: name,
-        private: privateRepo,
-        auto_init: autoInit
+        name: options.name,
+        private: options.privateRepo || false,
+        auto_init: options.autoInit || true
       })
-      .then((res: Response) => this.getRepoApi({repo: name, url: res.body.html_url}))
+      .then((res: Response) => this.getRepoApi({repo: options.name, url: res.body.html_url}))
       .catch((err: Error) => {
         if (/Unauthorized/.test(err.message)) {
           throw new BadCredentials('createRepo', this.config.type, err)
         }
 
         throw err
-      })
+      }) as Promise<any>
   }
 
   async listRepos(): Promise<string[]> {
     const url: string = this.personalOrg ? `${this.getBaseUrl()}/user/repos` : `${this.getBaseUrl()}/orgs/${this.config.owner}/repos`
 
-    return get(url)
-      .auth(this.config.username, this.config.password)
-      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
-      .accept('application/vnd.github.v3+json')
-      .then((res: Response) => res.body.map(repo => repo.html_url))
+    return this.get(url)
+      .then((res: Response) => res.body.map(repo => repo.html_url)) as Promise<string[]>
   }
 
   async deleteRepo(): Promise<GitApi> {
-    return httpDelete(this.getRepoUrl())
-      .auth(this.config.username, this.config.password)
-      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
-      .accept('application/vnd.github.v3+json')
+    return this.delete(this.getRepoUrl())
       .then((res: Response) => {
         const url = this.config.url.replace(new RegExp('(.*)/.*', 'g'), '$1')
 
@@ -393,10 +444,7 @@ export class Gitea extends GitBase implements GitApi {
   }
 
   async getRepoInfo(): Promise<GitRepo> {
-    return get(this.getRepoUrl())
-      .auth(this.config.username, this.config.password)
-      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
-      .accept('application/vnd.github.v3+json')
+    return this.get(this.getRepoUrl())
       .then(res => ({
         id: res.body.id,
         slug: res.body.full_name,
@@ -411,7 +459,7 @@ export class Gitea extends GitBase implements GitApi {
         }
 
         throw err
-      })
+      }) as Promise<GitRepo>
   }
 
   async getBranches(): Promise<GitBranch[]> {

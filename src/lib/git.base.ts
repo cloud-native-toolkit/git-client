@@ -274,7 +274,7 @@ export abstract class GitBase<T extends TypedGitRepoConfig = TypedGitRepoConfig>
   }
 
   async mergePullRequest(options: MergePullRequestOptions, retryHandler: EvaluateErrorForRetry = noRetry): Promise<string> {
-    return new Promise(async (resolve, reject) => {
+    return new Promise<string>(async (resolve, reject) => {
       while (true) {
         try {
           this.logger.debug('Merging pull request: ', options)
