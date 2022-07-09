@@ -8,6 +8,8 @@ import {
   repoNameToGitUrl
 } from './support/middleware';
 import {forAzureDevOpsProject, forCredentials} from './support/checks';
+import {Container} from 'typescript-ioc';
+import {Logger, verboseLoggerFactory} from '../util/logger';
 
 export const command = 'delete [gitUrl]'
 export const desc = 'Deletes a hosted git repo';
@@ -56,6 +58,8 @@ export const builder = (yargs: Argv<any>) => yargs
   .check(forAzureDevOpsProject())
   .check(forCredentials())
 export const handler =  async (argv: Arguments<DeleteArgs & {debug: boolean}>) => {
+
+  Container.bind(Logger).factory(verboseLoggerFactory(argv.debug))
 
   const credentials = {username: argv.username, password: argv.token}
 

@@ -8,6 +8,8 @@ import {
   parseHostOrgAndProjectFromUrl,
   repoNameToGitUrl
 } from './support/middleware';
+import {Container} from 'typescript-ioc';
+import {Logger, verboseLoggerFactory} from '../util/logger';
 
 export const command = 'exists [gitUrl]'
 export const desc = 'Checks if a hosted git repo exists';
@@ -62,6 +64,8 @@ export const builder = (yargs: Argv<any>) => yargs
   .check(forAzureDevOpsProject())
   .check(forCredentials())
 export const handler =  async (argv: Arguments<ExistsArgs & {debug: boolean}>) => {
+
+  Container.bind(Logger).factory(verboseLoggerFactory(argv.debug))
 
   const credentials = {username: argv.username, password: argv.token}
 

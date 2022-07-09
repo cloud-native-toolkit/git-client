@@ -7,6 +7,8 @@ import {
   parseHostOrgAndProjectFromUrl, repoNameToGitUrl
 } from './support/middleware';
 import {forAzureDevOpsProject, forCredentials} from './support/checks';
+import {Container} from 'typescript-ioc';
+import {Logger, verboseLoggerFactory} from '../util/logger';
 
 export const command = 'list [gitUrl]'
 export const aliases = []
@@ -55,6 +57,8 @@ export const builder = (yargs: Argv<any>) => yargs
   .check(forAzureDevOpsProject())
   .check(forCredentials())
 export const handler =  async (argv: Arguments<ListArgs & {debug: boolean}>) => {
+
+  Container.bind(Logger).factory(verboseLoggerFactory(argv.debug))
 
   const credentials = {username: argv.username, password: argv.token}
 
