@@ -10,6 +10,8 @@ import {Bitbucket} from './bitbucket';
 import {GitApi} from './git.api';
 import {AzureDevops} from './azure-devops';
 import {isDefinedAndNotNull} from '../util/object-util';
+import {Logger} from '../util/logger';
+import {Container} from 'typescript-ioc';
 
 const GIT_URL_PATTERNS = {
   'http': '(https{0,1})://([^/]*)/([^/]*)/{0,1}([^#]*)#{0,1}(.*)',
@@ -105,31 +107,40 @@ const updateAzureRepoConfig = (config: AuthGitRepoConfig): AuthGitRepoConfig => 
 async function getGitRepoType(config: AuthGitRepoConfig): Promise<RepoTypeResult> {
   const builder: RepoTypeResultBuilderType = repoTypeResultBuilder(config)
 
+  const logger: Logger = Container.get(Logger)
+
   if (config.host === 'github.com') {
+    logger.debug(`Host is github.com. Using ${GitHost.github} api`)
     return builder(GitHost.github);
   }
 
   if (config.host === 'bitbucket.org') {
+    logger.debug(`Host is bitbucket.org. Using ${GitHost.bitbucket} api`)
     return builder(GitHost.bitbucket);
   }
 
   if (config.host === 'dev.azure.com') {
+    logger.debug(`Host is dev.azure.com. Using ${GitHost.azure} api`)
     return builder(GitHost.azure, updateAzureRepoConfig(config));
   }
 
   if (await hasHeader(`${config.protocol}://${config.host}/api/v3`, 'X-GitHub-Enterprise-Version', config)) {
+    logger.debug(`api/v3 url returns X-GitHub-Enterprise-Version header. Using ${GitHost.ghe} api`)
     return builder(GitHost.ghe);
   }
 
   if (await hasBody(`${config.protocol}://${config.host}/api/v4/projects`, config)) {
+    logger.debug(`api/v4/projects url returns a body. Using ${GitHost.gitlab} api`)
     return builder(GitHost.gitlab);
   }
 
   if (await hasBody(`${config.protocol}://${config.host}/api/v1/settings/api`, config)) {
+    logger.debug(`api/v1/settings/api url returns a body. Using ${GitHost.gitea} api`)
     return builder(GitHost.gitea);
   }
 
   if (await hasBody(`${config.protocol}://${config.host}/api/v1/users/${config.username}`, config)) {
+    logger.debug(`api/v1/users/{username} url returns a body. Using ${GitHost.gogs} api`)
     return builder(GitHost.gogs);
   }
 
@@ -137,25 +148,34 @@ async function getGitRepoType(config: AuthGitRepoConfig): Promise<RepoTypeResult
 }
 
 async function hasHeader(url: string, header: string, {username, password}: {username: string, password: string}): Promise<boolean> {
+  const logger: Logger = Container.get(Logger)
+
   try {
     const response: Response = await get(url).auth(username, password);
+
+    logger.debug(`Headers for url: ${url}`, {headers: response.headers})
 
     const value = response.header[header] || response.header[header.toLowerCase()];
 
     return !!value;
   } catch (err) {
+    logger.debug(`Error calling url: ${url}`, {error: err})
     return false;
   }
 }
 
 async function hasBody(url: string, {username, password}: {username: string, password: string}): Promise<boolean> {
+  const logger: Logger = Container.get(Logger)
+
   try {
     const response: Response = await get(url).auth(username, password);
 
     const result = response.body;
+    logger.debug(`Body for url: ${url}`, {body: response.body})
 
     return isDefinedAndNotNull(result) && Object.keys(result).length > 0;
   } catch (err) {
+    logger.debug(`Error calling url: ${url}`, {error: err})
     return false;
   }
 }
