@@ -319,10 +319,10 @@ export abstract class GitBase<T extends TypedGitRepoConfig = TypedGitRepoConfig>
 
   credentials(): string {
     if (this.config.username) {
-      return `${this.config.username}:${this.config.password}`;
+      return `${encodeURIComponent(this.config.username)}:${encodeURIComponent(this.config.password)}`;
     }
 
-    return this.config.password;
+    return encodeURIComponent(this.config.password);
   }
 
   getType(): GitHost {
