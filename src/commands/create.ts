@@ -1,14 +1,16 @@
 import {Arguments, Argv} from 'yargs';
+import {Container} from 'typescript-ioc';
+import {dump} from 'js-yaml';
+
 import {apiFromPartialConfig, apiFromUrl, GitApi, isGitError} from '../lib';
 import {
   defaultOwnerToUsername,
   loadCredentialsFromFile,
   loadFromEnv,
-  parseHostOrgAndProjectFromUrl, repoNameToGitUrl
+  parseHostOrgProjectAndBranchFromUrl, repoNameToGitUrl
 } from './support/middleware';
 import {forAzureDevOpsProject, forCredentials} from './support/checks';
 import {isDefinedAndNotNull, isUndefinedOrNull} from '../util/object-util';
-import {Container} from 'typescript-ioc';
 import {Logger, verboseLoggerFactory} from '../util/logger';
 
 const updatePrivateRepo = () => {
@@ -88,11 +90,17 @@ export const builder = (yargs: Argv<any>) => yargs
     type: 'string',
     description: 'The token/password used to authenticate the user to the git server. The value can also be provided via the GIT_TOKEN environment variable.',
   })
+  .option('output', {
+    type: 'string',
+    choices: ['json', 'yaml', 'text'],
+    description: 'Print the output in the specified format. If not provided the information is printed in human readable text.',
+    default: 'text'
+  })
   .options('debug', {
     type: 'boolean',
     description: 'Display debug information'
   })
-  .middleware(parseHostOrgAndProjectFromUrl(), true)
+  .middleware(parseHostOrgProjectAndBranchFromUrl(), true)
   .middleware(loadFromEnv('host', 'GIT_HOST'), true)
   .middleware(loadFromEnv('project', 'GIT_PROJECT'), true)
   .middleware(loadFromEnv('username', 'GIT_USERNAME'), true)
@@ -104,7 +112,7 @@ export const builder = (yargs: Argv<any>) => yargs
   .check(forCredentials())
   .check(forAzureDevOpsProject())
   .check(publicPrivateRepo())
-export const handler =  async (argv: Arguments<CreateArgs & {debug: boolean}>) => {
+export const handler =  async (argv: Arguments<CreateArgs & {debug: boolean, output: 'json' | 'yaml' | 'text'}>) => {
 
   Container.bind(Logger).factory(verboseLoggerFactory(argv.debug))
 
@@ -117,7 +125,9 @@ export const handler =  async (argv: Arguments<CreateArgs & {debug: boolean}>) =
 
     const type = orgApi.getConfig().type
     const owner = orgApi.getConfig().owner
-    console.log(`Creating ${type} repo: ${owner}/${argv.name}`)
+    if (argv.output === 'text') {
+      console.log(`Creating ${type} repo: ${owner}/${argv.name}`)
+    }
 
     const repoApi: GitApi = await orgApi.createRepo({
       name: argv.name,
@@ -125,7 +135,16 @@ export const handler =  async (argv: Arguments<CreateArgs & {debug: boolean}>) =
       privateRepo:  argv.privateRepo
     })
 
-    console.log(`  Repo created: ${repoApi.getConfig().url}`)
+    switch (argv.output) {
+      case 'json':
+        console.log(JSON.stringify({url: repoApi.getConfig().url}, null, 2))
+        break
+      case 'yaml':
+        console.log(dump({url: repoApi.getConfig().url}))
+        break
+      default:
+        console.log(`  Repo created: ${repoApi.getConfig().url}`)
+    }
   } catch (err) {
     if (isGitError(err)) {
       console.error(err.message)

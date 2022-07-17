@@ -14,17 +14,19 @@ import {
   MergePullRequestOptions,
   MergeResolver,
   PullRequest,
+  PullRequestStatus,
   SimpleGitWithApi,
   UnresolvedConflictsError,
   UpdateAndMergePullRequestOptions,
   WebhookParams
 } from './git.api';
-import {GitHost, TypedGitRepoConfig} from './git.model';
+import {GitHost, MergeBlockedForPullRequest, TypedGitRepoConfig} from './git.model';
 import sleep from '../util/sleep';
 import first from '../util/first';
 import {isResponseError, ResponseError} from '../util/superagent-support';
 import {Logger} from '../util/logger';
 import {compositeRetryEvaluation, EvaluateErrorForRetry, noRetry, RetryResult} from '../util/retry-with-delay';
+import {minutesInMilliseconds, timeTextToMilliseconds} from '../util/string-util';
 
 export function isMergeError(error: Error): error is ResponseError {
 
@@ -172,7 +174,7 @@ export abstract class GitBase<T extends TypedGitRepoConfig = TypedGitRepoConfig>
 
       await git.checkoutBranch(config.sourceBranch, `origin/${config.sourceBranch}`);
 
-      this.logger.log(`Rebasing ${config.sourceBranch} branch on ${config.targetBranch}`);
+      this.logger.debug(`Rebasing ${config.sourceBranch} branch on ${config.targetBranch}`);
 
       try {
         await git.rebase([config.targetBranch]);
@@ -182,7 +184,7 @@ export abstract class GitBase<T extends TypedGitRepoConfig = TypedGitRepoConfig>
 
       let status: StatusResult;
       do {
-        status = await git.status();
+        status = await (git.status() as Promise<StatusResult>);
         this.logger.debug(`Status after rebase:`, {status});
 
         if (status.not_added.length === 0 && status.deleted.length === 0 && status.conflicted.length === 0 && status.staged.length === 0) {
@@ -205,7 +207,7 @@ export abstract class GitBase<T extends TypedGitRepoConfig = TypedGitRepoConfig>
               throw new UnresolvedConflictsError(unresolvedConflicts);
             }
 
-            this.logger.log('Adding resolved conflicts after rebase: ', resolvedConflicts);
+            this.logger.debug('Adding resolved conflicts after rebase: ', resolvedConflicts);
             await Promise.all(resolvedConflicts.map(async (file: string) => {
               await git.add(file)
               await git.commit(`Resolves conflict with ${file}`)
@@ -217,7 +219,7 @@ export abstract class GitBase<T extends TypedGitRepoConfig = TypedGitRepoConfig>
         }
 
         this.logger.debug('Continuing rebase');
-        const rebaseResult = await git.rebase(['--continue']);
+        const rebaseResult: string = await (git.rebase(['--continue']) as Promise<string>);
         if (/No changes - did you forget to use 'git add'/.test(rebaseResult)) {
           this.logger.debug('No changes after rebase. Skipping commit.')
           await git.rebase(['--skip'])
@@ -248,23 +250,17 @@ export abstract class GitBase<T extends TypedGitRepoConfig = TypedGitRepoConfig>
       if (_isMergeError(error) || isMergeConflict(error)) {
         const delay = 1000 + Math.random() * 5000;
 
-        logger.log('Rebasing branch and trying again.')
+        logger.debug('Rebasing branch and trying again.')
 
         const pr: PullRequest = await this.getPullRequest(options);
         const retry: boolean = await this.rebaseBranch(Object.assign({}, pr, {resolver: options.resolver}), {userConfig: options.userConfig});
 
         return {retry, delay};
       } else {
-        logger.log(`Error shouldn't be retried. ${error.message}/${isResponseError(error) ? error.status : '???'}/${isResponseError(error) ? error.response?.text : '?'}`);
+        logger.debug(`Error shouldn't be retried. ${error.message}/${isResponseError(error) ? error.status : '???'}/${isResponseError(error) ? error.response?.text : '?'}`);
 
         return {retry: false};
       }
-      // this.logger.log('Base branch was modified. Rebasing branch and trying again.');
-      //
-      // const pr: PullRequest = await this.getPullRequest(options.pullNumber);
-      // await this.rebaseBranch(Object.assign({}, pr, {resolver: options.resolver}), {userConfig: options.userConfig});
-      //
-      // return {retry: true, delay};
     }
 
     return await this.mergePullRequest(
@@ -274,10 +270,32 @@ export abstract class GitBase<T extends TypedGitRepoConfig = TypedGitRepoConfig>
   }
 
   async mergePullRequest(options: MergePullRequestOptions, retryHandler: EvaluateErrorForRetry = noRetry): Promise<string> {
+    const waitInMilliseconds: number = timeTextToMilliseconds(options.waitForBlocked)
+
+    let totalWaitTime: number = 0
     return new Promise<string>(async (resolve, reject) => {
       while (true) {
         try {
           this.logger.debug('Merging pull request: ', options)
+
+          const pr: PullRequest = await this.getPullRequest(options)
+          if (pr.status === PullRequestStatus.Conflicts) {
+            await this.rebaseBranch(Object.assign({}, pr, {resolver: options.resolver}), {userConfig: options.userConfig})
+            continue
+          }
+
+          if (pr.status === PullRequestStatus.Blocked && totalWaitTime < waitInMilliseconds) {
+            const waitMinutes = 5;
+            this.logger.debug(`  Pull request is blocked. Waiting ${waitMinutes} minutes`)
+
+            totalWaitTime += minutesInMilliseconds(waitMinutes)
+            await sleep(minutesInMilliseconds(waitMinutes))
+
+            continue
+          } else if (pr.status === PullRequestStatus.Blocked) {
+            throw new MergeBlockedForPullRequest('updateAndMergePullRequest', this.getType(), options.pullNumber + '')
+          }
+
           const result = await this.mergePullRequestInternal(options)
 
           resolve(result)

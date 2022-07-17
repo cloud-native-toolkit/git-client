@@ -5,12 +5,21 @@ import * as fs from 'fs';
 import * as StreamZip from 'node-stream-zip';
 
 import {
-  CreatePullRequestOptions, CreateRepoOptions,
-  CreateWebhook, DeleteBranchOptions, GetPullRequestOptions,
-  GitApi, GitBranch,
+  CreatePullRequestOptions,
+  CreateRepoOptions,
+  CreateWebhook,
+  DeleteBranchOptions,
+  GetPullRequestOptions,
+  GitApi,
+  GitBranch,
   GitEvent,
-  GitHeader, MergeConflict, MergePullRequestOptions, PullRequest,
-  UnknownWebhookError, UpdatePullRequestBranchOptions,
+  GitHeader,
+  MergeConflict,
+  MergePullRequestOptions,
+  PullRequest,
+  PullRequestStatus,
+  UnknownWebhookError,
+  UpdatePullRequestBranchOptions,
   WebhookAlreadyExists
 } from '../git.api';
 import {GitBase} from '../git.base';
@@ -126,7 +135,8 @@ const defaultRetryCallback = (err: any, res: Response): boolean => {
     return true;
   }
 
-  return err && "crossDomain" in err;}
+  return err && "crossDomain" in err;
+}
 
 export class Gitea extends GitBase implements GitApi {
   constructor(config: TypedGitRepoConfig) {
@@ -203,6 +213,7 @@ export class Gitea extends GitBase implements GitApi {
       .then(res => {
         return {
           pullNumber: res.body.number,
+          status: mapPullRequestStatus(res.body),
           sourceBranch: res.body.head.ref,
           targetBranch: res.body.base.ref,
         }
@@ -219,6 +230,7 @@ export class Gitea extends GitBase implements GitApi {
       })
       .then(res => ({
         pullNumber: res.body.number,
+        status: mapPullRequestStatus(res.body),
         sourceBranch: options.sourceBranch,
         targetBranch: options.targetBranch
       }))
@@ -445,14 +457,19 @@ export class Gitea extends GitBase implements GitApi {
 
   async getRepoInfo(): Promise<GitRepo> {
     return this.get(this.getRepoUrl())
-      .then(res => ({
-        id: res.body.id,
-        slug: res.body.full_name,
-        http_url: res.body.html_url,
-        name: res.body.name,
-        description: res.body.description,
-        is_private: res.body.private
-      }))
+      .then(res => {
+        const gitRepo: GitRepo = {
+          id: res.body.id,
+          slug: res.body.full_name,
+          http_url: res.body.html_url,
+          name: res.body.name,
+          description: res.body.description,
+          is_private: res.body.private,
+          default_branch: res.body.default_branch
+        }
+
+        return gitRepo
+      })
       .catch(err => {
         if (err.response.status === 404) {
           throw new RepoNotFound(this.config.url)
@@ -464,5 +481,24 @@ export class Gitea extends GitBase implements GitApi {
 
   async getBranches(): Promise<GitBranch[]> {
     throw new Error('method not implemented: getBranches()')
+  }
+}
+
+const mapPullRequestStatus = (pullRequest: {state: 'open' | 'closed', merged: boolean, mergeable: boolean}): PullRequestStatus => {
+  switch (pullRequest.state) {
+    case 'open':
+      if (pullRequest.mergeable) {
+        return PullRequestStatus.Active
+      } else {
+        return PullRequestStatus.Conflicts
+      }
+    case 'closed':
+      if (pullRequest.merged) {
+        return PullRequestStatus.Completed
+      } else {
+        return PullRequestStatus.Abandoned
+      }
+    default:
+      return PullRequestStatus.NotSet
   }
 }

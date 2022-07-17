@@ -1,18 +1,26 @@
-import {get, post, delete as deleteUrl, Response} from 'superagent';
+import {delete as deleteUrl, get, post, Response} from 'superagent';
 
 import {
-  CreatePullRequestOptions, CreateRepoOptions,
-  CreateWebhook, DeleteBranchOptions, GetPullRequestOptions,
-  GitApi, GitBranch,
+  CreatePullRequestOptions,
+  CreateRepoOptions,
+  CreateWebhook,
+  DeleteBranchOptions,
+  GetPullRequestOptions,
+  GitApi,
+  GitBranch,
   GitEvent,
-  GitHeader, MergeConflict, MergePullRequestOptions, PullRequest,
-  UnknownWebhookError, UpdatePullRequestBranchOptions,
+  GitHeader,
+  MergeConflict,
+  MergePullRequestOptions,
+  PullRequest,
+  PullRequestStatus,
+  UnknownWebhookError,
+  UpdatePullRequestBranchOptions,
   WebhookAlreadyExists
 } from '../git.api';
 import {BadCredentials, GitRepo, RepoNotFound, TypedGitRepoConfig, Webhook} from '../git.model';
 import {GitBase} from '../git.base';
 import {isResponseError} from '../../util/superagent-support';
-import {apiFromConfig} from '../util';
 
 enum BitbucketHeader {
   event = 'X-Event-Key'
@@ -79,68 +87,65 @@ export class Bitbucket extends GitBase implements GitApi {
       .then(() => 'success')
   }
 
-  async getPullRequest({pullNumber}: GetPullRequestOptions): Promise<PullRequest> {
-    return get(`${this.getRepoUrl()}/pullrequests/${pullNumber}`)
+  async getPullRequest(options: GetPullRequestOptions): Promise<PullRequest> {
+    return get(`${this.getRepoUrl()}/pullrequests/${options.pullNumber}`)
       .auth(this.config.username, this.config.password)
       .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
       .accept('application/json')
       .then(res => ({
         pullNumber: res.body.id,
+        status: mapPullRequestStatus(res.body.status),
         sourceBranch: res.body.source.branch.name,
         targetBranch: res.body.destination.branch.name
       }))
   }
 
-  async createPullRequest({title, sourceBranch, targetBranch}: CreatePullRequestOptions): Promise<PullRequest> {
+  async createPullRequest(options: CreatePullRequestOptions): Promise<PullRequest> {
     return post(`${this.getRepoUrl()}/pullrequests`)
       .auth(this.config.username, this.config.password)
       .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
       .accept('application/json')
       .send({
-        title,
+        title: options.title,
         source: {
           branch: {
-            name: sourceBranch
+            name: options.sourceBranch
           }
         },
         destination: {
           branch: {
-            name: targetBranch
+            name: options.targetBranch
           }
         }
       })
       .then(res => ({
         pullNumber: res.body.id,
-        sourceBranch,
-        targetBranch
+        status: mapPullRequestStatus(res.body.status),
+        sourceBranch: options.sourceBranch,
+        targetBranch: options.targetBranch
       }))
   }
 
-  async mergePullRequestInternal({
-                           pullNumber,
-                           method,
-                           message,
-                           title,
-                           delete_branch_after_merge
-                         }: MergePullRequestOptions): Promise<string> {
-    return post(`${this.getRepoUrl()}/pullrequests/${pullNumber}/merge`)
+  async mergePullRequestInternal(options: MergePullRequestOptions): Promise<string> {
+
+    return post(`${this.getRepoUrl()}/pullrequests/${options.pullNumber}/merge`)
       .auth(this.config.username, this.config.password)
       .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
       .accept('application/json')
       .send({
         type: 'git',
-        close_source_branch: delete_branch_after_merge,
-        merge_strategy: method === 'merge' ? 'merge_commit' : method === 'squash' ? 'squash' : 'fast_forward',
-        message
+        close_source_branch: options.delete_branch_after_merge,
+        merge_strategy: options.method === 'merge' ? 'merge_commit' : options.method === 'squash' ? 'squash' : 'fast_forward',
+        message: options.message
       })
       .then(() => 'success')
       .catch(err => {
         if (err.response.body.error.message === 'You can\'t merge until you resolve all merge conflicts.') {
-          throw new MergeConflict(pullNumber)
+          throw new MergeConflict(options.pullNumber)
         }
 
         throw err
-      })
+      }) as Promise<string>
   }
 
   async updatePullRequestBranch(options: UpdatePullRequestBranchOptions): Promise<string> {
@@ -166,7 +171,7 @@ export class Bitbucket extends GitBase implements GitApi {
             insecure_ssl: 0
           }
         }))
-      })
+      }) as Promise<Webhook[]>
   }
 
   async listFiles(): Promise<Array<{ path: string, url?: string }>> {
@@ -259,7 +264,12 @@ export class Bitbucket extends GitBase implements GitApi {
     return BitbucketEvent[eventId];
   }
 
-  async createRepo({name, privateRepo = false, autoInit = true}: CreateRepoOptions): Promise<GitApi> {
+  async createRepo(options: CreateRepoOptions): Promise<GitApi> {
+
+    const name = options.name;
+    const privateRepo = options.privateRepo || false;
+    const autoInit = options.autoInit || true
+
     const repoApi: Bitbucket = await post(`${this.getBaseUrl()}/repositories/${this.config.owner}/${name}`)
       .set('Content-Type', 'application/json')
       .auth(this.config.username, this.config.password)
@@ -338,7 +348,7 @@ export class Bitbucket extends GitBase implements GitApi {
         }
 
         throw err
-      })
+      }) as Promise<GitApi>
   }
 
   async getRepoInfo(): Promise<GitRepo> {
@@ -346,24 +356,44 @@ export class Bitbucket extends GitBase implements GitApi {
       .auth(this.config.username, this.config.password)
       .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
       .accept('application/json')
-      .then(res => ({
-        id: res.body.id,
-        slug: res.body.full_name,
-        http_url: res.body.links.html.href,
-        name: res.body.name,
-        description: res.body.description,
-        is_private: res.body.is_private
-      }))
+      .then(res => {
+        const gitRepo: GitRepo = {
+          id: res.body.id,
+          slug: res.body.full_name,
+          http_url: res.body.links.html.href,
+          name: res.body.name,
+          description: res.body.description,
+          is_private: res.body.is_private,
+          default_branch: res.body.mainbranch.name
+        }
+
+        return gitRepo
+      })
       .catch(err => {
         if (err.response.status === 404) {
           throw new RepoNotFound(this.config.url)
         }
 
         throw err
-      })
+      }) as Promise<GitRepo>
   }
 
   async getBranches(): Promise<GitBranch[]> {
     throw new Error('method not implemented: getBranches()')
+  }
+}
+
+const mapPullRequestStatus = (status: string): PullRequestStatus => {
+  switch (status) {
+    case 'MERGED':
+      return PullRequestStatus.Completed
+    case 'SUPERSEDED':
+      return PullRequestStatus.Abandoned
+    case 'OPEN':
+      return PullRequestStatus.Active
+    case 'DECLINED':
+      return PullRequestStatus.Abandoned
+    default:
+      return PullRequestStatus.NotSet
   }
 }

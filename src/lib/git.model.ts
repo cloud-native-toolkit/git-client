@@ -82,6 +82,7 @@ export interface GitRepo {
   name: string;
   description: string;
   is_private: boolean;
+  default_branch: string;
 }
 
 export enum ErrorType {
@@ -89,7 +90,9 @@ export enum ErrorType {
   badCredentials = 'badCredentials',
   userNotFound = 'userNotFound',
   invalidGitUrl = 'invalidGitUrl',
-  repoNotFound = 'repoNotFound'
+  repoNotFound = 'repoNotFound',
+  noCommits = 'noCommits',
+  mergeBlocked = 'mergeBlocked'
 }
 
 export class GitError extends Error {
@@ -111,6 +114,18 @@ export class InsufficientPermissions extends GitError {
 export class BadCredentials extends GitError {
   constructor(operation: string, gitHost: GitHost, error?: Error) {
     super(ErrorType.badCredentials, `Bad credentials for ${operation}`, gitHost, error);
+  }
+}
+
+export class NoCommitsForPullRequest extends GitError {
+  constructor(operation: string, gitHost: GitHost, sourceBranch: string, targetBranch: string, error?: Error) {
+    super(ErrorType.noCommits, `No commits between ${targetBranch} and ${sourceBranch}`, gitHost, error);
+  }
+}
+
+export class MergeBlockedForPullRequest extends GitError {
+  constructor(operation: string, gitHost: GitHost, pullNumber: string, error?: Error) {
+    super(ErrorType.mergeBlocked, `Merge blocked for pull request: ${pullNumber}`, gitHost, error);
   }
 }
 

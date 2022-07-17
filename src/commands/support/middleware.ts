@@ -83,7 +83,26 @@ export const repoNameToGitUrl = () => {
   }
 }
 
-export const parseHostOrgAndProjectFromUrl = () => {
+const parseBranchNames = (branchNameString: string): {sourceBranch?: string, targetBranch?: string} => {
+  if (!branchNameString) {
+    return {}
+  }
+
+  const branchNames = branchNameString.split(':')
+
+  if (branchNames.length == 1) {
+    return {
+      sourceBranch: branchNames[0]
+    }
+  }
+
+  return {
+    sourceBranch: branchNames[0],
+    targetBranch: branchNames[1]
+  }
+}
+
+export const parseHostOrgProjectAndBranchFromUrl = () => {
   return yargs => {
     if (!yargs.gitUrl) {
       return {}
@@ -92,7 +111,12 @@ export const parseHostOrgAndProjectFromUrl = () => {
     const regex = new RegExp('https?://([^/]+)/([^/]+)/(.*)')
 
     if (regex.test(yargs.gitUrl)) {
-      const result = regex.exec(yargs.gitUrl)
+      const branchParts = yargs.gitUrl.split('#')
+
+      const gitUrl = branchParts[0];
+      const {sourceBranch, targetBranch} = parseBranchNames(branchParts.length > 1 ? branchParts[1] : '')
+
+      const result = regex.exec(gitUrl)
 
       const host = result[1].includes('@') ? result[1].split('@')[1] : result[1]
       const owner = result[2]
@@ -106,13 +130,17 @@ export const parseHostOrgAndProjectFromUrl = () => {
         return {
           host,
           owner,
-          project
+          project,
+          sourceBranch,
+          targetBranch
         }
       }
 
       return {
         host,
-        owner
+        owner,
+        sourceBranch,
+        targetBranch
       }
     }
 

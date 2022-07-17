@@ -9,7 +9,8 @@ import {GitHost, Webhook} from './git.model';
 import {join as pathJoin} from 'path';
 import {Container} from 'typescript-ioc';
 import {Logger, verboseLoggerFactory} from '../util/logger';
-import sleep from '../util/sleep';
+import {isString} from '../util/string-util';
+import {isError} from '../util/error-util';
 
 const asKey = (name: string, key: string): string => {
   return `${name}_${key}`.toUpperCase()
@@ -437,12 +438,4 @@ export const loadKustomize = async (kustomizeFile: File | string): Promise<Kusto
   const kustomize: IKustomization = await file.readYaml();
 
   return new Kustomization(kustomize);
-}
-
-export function isString(value: any): value is string {
-  return value && typeof value === 'string';
-}
-
-export function isError(error: any): error is Error {
-  return !!error && !!((error as Error).stack) && !!((error as Error).message);
 }

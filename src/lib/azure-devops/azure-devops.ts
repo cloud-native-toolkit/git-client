@@ -1,8 +1,7 @@
 import {getPersonalAccessTokenHandler, WebApi} from 'azure-devops-node-api';
 import {IGitApi} from 'azure-devops-node-api/GitApi';
 import {
-  GitCommitRef,
-  GitPullRequestMergeStrategy, GitQueryCommitsCriteria,
+  GitPullRequestMergeStrategy,
   ItemContentType,
   PullRequestAsyncStatus,
   PullRequestStatus,
@@ -20,10 +19,12 @@ import {
   GitApi,
   GitBranch,
   GitEvent,
-  GitHeader, MergeConflict,
+  GitHeader,
+  MergeConflict,
   MergeMethod,
   MergePullRequestOptions,
   PullRequest,
+  PullRequestStatus as CommonPullRequestStatus,
   UpdatePullRequestBranchOptions
 } from '../git.api';
 import {GitHookUrlVerification, GitRepo, TypedGitRepoConfig, Webhook} from '../git.model';
@@ -83,7 +84,11 @@ export class AzureDevops extends GitBase<AzureTypedGitRepoConfig> implements Git
     return connection.getGitApi(orgUrl);
   }
 
-  async createRepo({name, privateRepo = false, autoInit = true}: CreateRepoOptions): Promise<GitApi> {
+  async createRepo(options: CreateRepoOptions): Promise<GitApi> {
+    const name = options.name
+    const privateRepo = options.privateRepo || false
+    const autoInit = options.autoInit || true
+
     const api = await this.getGitApi()
 
     const gitApi: AzureDevops = await api
@@ -197,31 +202,36 @@ export class AzureDevops extends GitBase<AzureTypedGitRepoConfig> implements Git
         http_url: extractUrl(result.remoteUrl),
         name: result.name,
         description: '',
-        is_private: false
+        is_private: false,
+        default_branch: result.defaultBranch
       }))
   }
 
-  async createPullRequest({title, sourceBranch, targetBranch, draft, issue, maintainer_can_modify}: CreatePullRequestOptions, retryHandler?: EvaluateErrorForRetry): Promise<PullRequest> {
+  async createPullRequest(options: CreatePullRequestOptions, retryHandler?: EvaluateErrorForRetry): Promise<PullRequest> {
     const api = await this.getGitApi()
 
     return api
       .createPullRequest(
         {
-          isDraft: draft,
-          sourceRefName: `refs/heads/${sourceBranch}`,
-          targetRefName: `refs/heads/${targetBranch}`,
-          title,
+          isDraft: options.draft,
+          sourceRefName: `refs/heads/${options.sourceBranch}`,
+          targetRefName: `refs/heads/${options.targetBranch}`,
+          title: options.title,
         },
         this.repo,
         this.project
       )
-      .then(res => ({
-        pullNumber: res.pullRequestId,
-        sourceBranch,
-        targetBranch,
-        mergeStatus: mapMergeStatus(res.mergeStatus),
-        hasConflicts: false,
-      }))
+      .then(res => {
+        const pr: PullRequest = {
+          pullNumber: res.pullRequestId,
+          status: this.mapPullRequestStatus(res.status, res.mergeStatus),
+          sourceBranch: options.sourceBranch,
+          targetBranch: options.targetBranch,
+          mergeStatus: mapMergeStatus(res.mergeStatus),
+          hasConflicts: false,
+        }
+        return pr
+      })
   }
 
   async deleteBranch(options: DeleteBranchOptions): Promise<string> {
@@ -246,25 +256,53 @@ export class AzureDevops extends GitBase<AzureTypedGitRepoConfig> implements Git
       .then(result => result.defaultBranch)
   }
 
-  async getPullRequest({pullNumber}: GetPullRequestOptions, retryHandler?: EvaluateErrorForRetry): Promise<PullRequest> {
+  mapPullRequestStatus(status: PullRequestStatus, mergeStatus: PullRequestAsyncStatus): CommonPullRequestStatus {
+    switch (status) {
+      case PullRequestStatus.NotSet:
+        return CommonPullRequestStatus.NotSet
+      case PullRequestStatus.Active:
+        switch (mergeStatus) {
+          case PullRequestAsyncStatus.RejectedByPolicy:
+            return CommonPullRequestStatus.Blocked
+          case PullRequestAsyncStatus.Conflicts:
+            return CommonPullRequestStatus.Conflicts
+          default:
+            return CommonPullRequestStatus.Active
+        }
+      case PullRequestStatus.Abandoned:
+        return CommonPullRequestStatus.Abandoned
+      case PullRequestStatus.Completed:
+        return CommonPullRequestStatus.Completed
+      default:
+        return CommonPullRequestStatus.NotSet
+    }
+  }
+
+  async getPullRequest(options: GetPullRequestOptions, retryHandler?: EvaluateErrorForRetry): Promise<PullRequest> {
+    const pullNumber = options.pullNumber
+
     const api = await this.getGitApi()
 
     return api
       .getPullRequest(this.repo, pullNumber, this.project)
-      .then(result => ({
-        pullNumber,
-        sourceBranch: result.sourceRefName.replace('refs/heads/', ''),
-        targetBranch: result.targetRefName.replace('refs/heads/', ''),
-        mergeStatus: mapMergeStatus(result.mergeStatus),
-        hasConflicts: result.mergeStatus === PullRequestAsyncStatus.Conflicts
-      }))
+      .then(result => {
+        const pr: PullRequest = {
+          pullNumber,
+          status: this.mapPullRequestStatus(result.status, result.mergeStatus),
+          sourceBranch: result.sourceRefName.replace('refs/heads/', ''),
+          targetBranch: result.targetRefName.replace('refs/heads/', ''),
+          mergeStatus: mapMergeStatus(result.mergeStatus),
+          hasConflicts: result.mergeStatus === PullRequestAsyncStatus.Conflicts
+        }
+        return pr
+      })
   }
 
-  async mergePullRequestInternal({pullNumber, method, title, message, delete_branch_after_merge}: MergePullRequestOptions): Promise<string> {
+  async mergePullRequestInternal(options: MergePullRequestOptions): Promise<string> {
     const api = await this.getGitApi()
 
     const lastMergeSourceCommit = await api
-      .getPullRequest(this.repo, pullNumber, this.project)
+      .getPullRequest(this.repo, options.pullNumber, this.project)
       .then(result => result.lastMergeSourceCommit.commitId)
 
     return api
@@ -275,23 +313,23 @@ export class AzureDevops extends GitBase<AzureTypedGitRepoConfig> implements Git
           },
           completionOptions: {
             bypassPolicy: true,
-            mergeStrategy: mapMergeMethod(method),
-            deleteSourceBranch: delete_branch_after_merge,
+            mergeStrategy: mapMergeMethod(options.method),
+            deleteSourceBranch: options.delete_branch_after_merge,
           },
           status: PullRequestStatus.Completed
         },
         this.repo,
-        pullNumber,
+        options.pullNumber,
         this.project
       )
       .then(async result => {
         // sleep here to prevent a timing issue between the pull request and pull request conflict apis
         await sleep(500)
 
-        const conflicts = await api.getPullRequestConflicts(this.repo, pullNumber, this.project)
+        const conflicts = await api.getPullRequestConflicts(this.repo, options.pullNumber, this.project)
 
         if (conflicts.length > 0) {
-          throw new MergeConflict(pullNumber)
+          throw new MergeConflict(options.pullNumber)
         }
 
         return result.mergeId
@@ -299,7 +337,7 @@ export class AzureDevops extends GitBase<AzureTypedGitRepoConfig> implements Git
       .catch(err => {
         this.logger.debug('Error merging pull request: ', err)
         throw err
-      })
+      }) as Promise<string>
   }
 
   async updatePullRequestBranch(options: UpdatePullRequestBranchOptions, retryHandler?: EvaluateErrorForRetry): Promise<string> {
@@ -324,7 +362,7 @@ export class AzureDevops extends GitBase<AzureTypedGitRepoConfig> implements Git
     }
 
     const azureSubscriptionToWebhook = (hook): Webhook => {
-      return {
+      const webhook: Webhook = {
         id: hook.id,
         name: hook.eventDescription,
         active: hook.status === 'enabled',
@@ -335,6 +373,8 @@ export class AzureDevops extends GitBase<AzureTypedGitRepoConfig> implements Git
           insecure_ssl: (hook.consumerInputs.acceptUntrustedCerts == 'true' ? GitHookUrlVerification.performed : GitHookUrlVerification.notPerformed) as any
         }
       }
+
+      return webhook
     }
 
     return get(`https://${this.host}/${this.owner}/_apis/hooks/subscriptions?api-version=6.0`)
@@ -342,10 +382,10 @@ export class AzureDevops extends GitBase<AzureTypedGitRepoConfig> implements Git
       .then(res => res.body.value
         .filter(matchRepository(repository))
         .map(azureSubscriptionToWebhook)
-      )
+      ) as Promise<Webhook[]>
   }
 
-  async createWebhook({webhookUrl}: CreateWebhook): Promise<string> {
+  async createWebhook(options: CreateWebhook): Promise<string> {
     const api = await this.getGitApi()
 
     const {projectId, repository} =  await api
@@ -364,7 +404,7 @@ export class AzureDevops extends GitBase<AzureTypedGitRepoConfig> implements Git
         eventDescription: `Push to ${this.repo}`,
         consumerId: 'webHooks',
         consumerActionId: 'httpRequest',
-        actionDescription: `To url ${webhookUrl}`,
+        actionDescription: `To url ${options.webhookUrl}`,
         publisherInputs: {
           branch: '',
           pushedBy: '',
@@ -372,10 +412,10 @@ export class AzureDevops extends GitBase<AzureTypedGitRepoConfig> implements Git
           repository
         },
         consumerInputs: {
-          url: webhookUrl
+          url: options.webhookUrl
         }
       })
-      .then(res => res.body.id)
+      .then(res => res.body.id) as Promise<string>
   }
 
   getEventName(eventId: GitEvent): string {
@@ -388,7 +428,7 @@ export class AzureDevops extends GitBase<AzureTypedGitRepoConfig> implements Git
   }
 
   async getFileContents(fileDescriptor: { path: string; url?: string }): Promise<string | Buffer> {
-    return Promise.resolve(undefined);
+    throw new Error('method not implemented: getFileContents')
   }
 
   getHeader(headerId: GitHeader): string {
@@ -416,6 +456,6 @@ export class AzureDevops extends GitBase<AzureTypedGitRepoConfig> implements Git
   }
 
   async listFiles(): Promise<Array<{ path: string; url?: string }>> {
-    return Promise.resolve(undefined);
+    throw new Error('method not implemented: listFiles')
   }
 }

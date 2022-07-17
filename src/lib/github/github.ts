@@ -1,35 +1,42 @@
 import {delete as httpDelete, get, post, put, Response} from 'superagent';
 
 import {
-  CreatePullRequestOptions, CreateRepoOptions,
-  CreateWebhook, DeleteBranchOptions, GetPullRequestOptions,
-  GitApi, GitBranch,
+  CreatePullRequestOptions,
+  CreateRepoOptions,
+  CreateWebhook,
+  DeleteBranchOptions,
+  GetPullRequestOptions,
+  GitApi,
+  GitBranch,
   GitEvent,
-  GitHeader, MergeConflict,
+  GitHeader,
+  MergeConflict,
   MergePullRequestOptions,
   PullRequest,
-  UnknownWebhookError, UpdatePullRequestBranchOptions,
+  PullRequestStatus,
+  UnknownWebhookError,
+  UpdatePullRequestBranchOptions,
   WebhookAlreadyExists
 } from '../git.api';
 import {
   BadCredentials,
   GitHookConfig,
-  GitHookContentType, GitRepo,
-  InsufficientPermissions, RepoNotFound,
+  GitHookContentType,
+  GitRepo,
+  InsufficientPermissions, MergeBlockedForPullRequest,
+  NoCommitsForPullRequest,
+  RepoNotFound,
   TypedGitRepoConfig,
   Webhook
 } from '../git.model';
 import {GitBase} from '../git.base';
 import {isResponseError, ResponseError} from '../../util/superagent-support';
 import {timer} from '../timer';
-import {
-  compositeRetryEvaluation,
-  EvaluateErrorForRetry,
-  retryWithDelay
-} from '../../util/retry-with-delay';
-import {apiFromConfig} from '../util';
+import {compositeRetryEvaluation, EvaluateErrorForRetry, retryWithDelay} from '../../util/retry-with-delay';
 import {Octokit} from '@octokit/core'
 import {ThrottledOctokit} from './octokit';
+import {Logger} from '../../util/logger';
+import {Container} from 'typescript-ioc';
 
 export interface GitHookData {
   name: 'web';
@@ -172,11 +179,18 @@ abstract class GithubCommon extends GitBase implements GitApi {
         repo: this.config.repo,
         pull_number: options.pullNumber
       })
-      .then(res => ({
-        pullNumber: res.data.number,
-        sourceBranch: res.data.head.ref,
-        targetBranch: res.data.base.ref
-      }))
+      .then(res => {
+        this.logger.debug('Pull request: ', {data: res.data})
+
+        const result: PullRequest = ({
+          pullNumber: res.data.number,
+          status: mapPullRequestStatus(res.data),
+          sourceBranch: res.data.head.ref,
+          targetBranch: res.data.base.ref
+        })
+
+        return result
+      })
   }
 
   async createPullRequest({title, sourceBranch, targetBranch, maintainer_can_modify, draft = false, rateLimit}: CreatePullRequestOptions, retryHandler?: EvaluateErrorForRetry): Promise<PullRequest> {
@@ -194,12 +208,29 @@ abstract class GithubCommon extends GitBase implements GitApi {
       })
       .then(res => ({
         pullNumber: res.data.number,
+        status: mapPullRequestStatus(res.data),
         sourceBranch,
         targetBranch
       }))
+      .catch(err => {
+        if (/No commits between/.test(err.message)) {
+          throw new NoCommitsForPullRequest('create', this.getType(), sourceBranch, targetBranch, err)
+        } else {
+          throw err
+        }
+      }) as Promise<PullRequest>
   }
 
-  async mergePullRequestInternal({pullNumber, title, message, method, rateLimit, delete_branch_after_merge = false}: MergePullRequestOptions, retryHandler?: EvaluateErrorForRetry): Promise<string> {
+  async mergePullRequestInternal(options: MergePullRequestOptions, retryHandler?: EvaluateErrorForRetry): Promise<string> {
+
+    const logger: Logger = Container.get(Logger)
+
+    const pullNumber = options.pullNumber
+    const title = options.title
+    const message = options.message
+    const method = options. method
+    const delete_branch_after_merge = options.delete_branch_after_merge || false
+
     const deleteBranch = !delete_branch_after_merge ? async () => undefined : async () => {
       const {sourceBranch} = await this.getPullRequest({pullNumber}).catch(() => ({sourceBranch: ''}));
 
@@ -207,6 +238,8 @@ abstract class GithubCommon extends GitBase implements GitApi {
         await this.deleteBranch({branch: sourceBranch}).catch(() => console.log('Unable to delete branch: ' + sourceBranch))
       }
     }
+
+    logger.debug('Merging pull request: ', pullNumber)
 
     const result: string = await this.octokit.request(
       'PUT /repos/{owner}/{repo}/pulls/{pullNumber}/merge',
@@ -219,23 +252,26 @@ abstract class GithubCommon extends GitBase implements GitApi {
         merge_method: method
       })
       .then(async res => {
-        console.log('Merge complete!!')
+        logger.debug('Merge complete!!')
         await deleteBranch()
 
-        console.log('Delete complete')
+        logger.debug('Delete complete')
 
         return res.data.message
       })
       .catch(err => {
         if (err.response.status === 405) {
-          console.log('Merge conflict: ', err)
-          throw new MergeConflict(pullNumber)
+          if (/approving review is required/.test(err.message)) {
+            throw new MergeBlockedForPullRequest('mergePullRequest', this.getType(), pullNumber + '', err)
+          } else {
+            throw new MergeConflict(pullNumber)
+          }
         } else {
           throw err
         }
       })
 
-    console.log('Merge complete')
+    logger.debug('Merge complete')
 
     return result;
   }
@@ -248,7 +284,7 @@ abstract class GithubCommon extends GitBase implements GitApi {
         repo: this.config.repo,
         pullNumber
       })
-      .then(res => res.data.message)
+      .then(res => res.data.message) as Promise<string>
   }
 
   async getBranches(): Promise<GitBranch[]> {
@@ -258,7 +294,7 @@ abstract class GithubCommon extends GitBase implements GitApi {
         owner: this.config.owner,
         repo: this.config.repo
       })
-      .then(res => res.data)
+      .then(res => res.data) as Promise<GitBranch[]>
   }
 
   async get(uri: string = ''): Promise<Response> {
@@ -295,7 +331,11 @@ abstract class GithubCommon extends GitBase implements GitApi {
       .send(data);
   }
 
-  async createRepo({name, privateRepo = false, autoInit = true}: CreateRepoOptions): Promise<GitApi> {
+  async createRepo(options: CreateRepoOptions): Promise<GitApi> {
+    const name = options.name
+    const privateRepo = options.privateRepo || false
+    const autoInit = options.autoInit || true
+
     const errorHandler = (err) => {
       if (/Bad credentials/.test(err.message)) {
         throw new BadCredentials('createRepo', this.config.type, err)
@@ -312,7 +352,7 @@ abstract class GithubCommon extends GitBase implements GitApi {
           private: !!privateRepo
         })
         .then(res => this.getRepoApi({repo: name, url: res.data.clone_url}))
-        .catch(errorHandler)
+        .catch(errorHandler) as Promise<GitApi>
     } else {
       return this.octokit
         .request('POST /orgs/{org}/repos', {
@@ -322,7 +362,7 @@ abstract class GithubCommon extends GitBase implements GitApi {
           private: !!privateRepo
         })
         .then(res => this.getRepoApi({repo: name, url: res.data.clone_url}))
-        .catch(errorHandler)
+        .catch(errorHandler) as Promise<GitApi>
     }
   }
 
@@ -345,7 +385,7 @@ abstract class GithubCommon extends GitBase implements GitApi {
         } else {
           throw err;
         }
-      })
+      }) as Promise<GitApi>
   }
 
   async getRepoInfo(): Promise<GitRepo> {
@@ -355,14 +395,17 @@ abstract class GithubCommon extends GitBase implements GitApi {
         repo: this.config.repo
       })
       .then((res: any) => {
-        return ({
+        const gitRepo: GitRepo = {
           id: res.data.id,
           slug: res.data.full_name,
           http_url: res.data.clone_url,
           name: res.data.name,
           description: res.data.description,
-          is_private: res.data.private
-        })
+          is_private: res.data.private,
+          default_branch: res.data.default_branch
+        }
+
+        return gitRepo
       })
       .catch(err => {
         if (err.response.status === 404) {
@@ -370,7 +413,7 @@ abstract class GithubCommon extends GitBase implements GitApi {
         }
 
         throw err
-      })
+      }) as Promise<GitRepo>
   }
 
   async createWebhook(options: CreateWebhook): Promise<string> {
@@ -395,13 +438,16 @@ abstract class GithubCommon extends GitBase implements GitApi {
   }
 
   async listRepos(): Promise<string[]> {
-    if (this.personalOrg) {
-      return this.octokit
+    const route = this.personalOrg ? 'GET /users/{username}/repos' : 'GET /orgs/{org}/repos'
+    const options = this.personalOrg ? {username: this.username} : {org: this.owner}
+    const per_page = 100
+
+    const result: string[] = []
+    for (let page = 1; true; page++) {
+      const pageResult: string[] = await (this.octokit
         .request(
-          'GET /users/{username}/repos',
-          {
-            username: this.username
-          }
+          route,
+          Object.assign({per_page, page}, options)
         )
         .then(res => res.data.map(repo => repo.html_url))
         .catch(err => {
@@ -410,24 +456,16 @@ abstract class GithubCommon extends GitBase implements GitApi {
           } else {
             throw err
           }
-        })
-    } else {
-      return this.octokit
-        .request(
-          'GET /orgs/{org}/repos',
-          {
-            org: this.owner
-          }
-        )
-        .then(res => res.data.map(repo => repo.html_url))
-        .catch(err => {
-          if (/Bad credentials/.test(err.message)) {
-            throw new BadCredentials('listRepos', this.config.type, err)
-          } else {
-            throw err
-          }
-        })
+        }) as Promise<string[]>)
+
+      result.push(...pageResult)
+
+      if (pageResult.length < per_page) {
+        break
+      }
     }
+
+    return result
   }
 
   async getWebhooks(): Promise<Webhook[]> {
@@ -516,5 +554,26 @@ export class GithubEnterprise extends GithubCommon {
 
   getRepoUrl(): string {
     return `${this.getBaseUrl()}${this.getRepoUri()}`;
+  }
+}
+
+const mapPullRequestStatus = (pullRequest: {state: 'open' | 'closed', merged: boolean, mergeable: boolean, mergeable_state: string}): PullRequestStatus => {
+  switch (pullRequest.state) {
+    case 'open':
+      if (pullRequest.mergeable_state === 'dirty') {
+        return PullRequestStatus.Conflicts
+      } else if (pullRequest.mergeable_state === 'blocked') {
+        return PullRequestStatus.Blocked
+      } else {
+        return PullRequestStatus.Active
+      }
+    case 'closed':
+      if (pullRequest.merged) {
+        return PullRequestStatus.Completed
+      } else {
+        return PullRequestStatus.Abandoned
+      }
+    default:
+      return PullRequestStatus.NotSet
   }
 }

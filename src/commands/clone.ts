@@ -1,23 +1,29 @@
 import {Arguments, Argv} from 'yargs';
-import {apiFromUrl, GitApi, isGitError} from '../lib';
+import {apiFromPartialConfig, apiFromUrl, GitApi, isGitError} from '../lib';
 import {
   defaultOwnerToUsername,
   loadCredentialsFromFile,
   loadFromEnv,
-  parseHostOrgProjectAndBranchFromUrl,
-  repoNameToGitUrl
+  parseHostOrgProjectAndBranchFromUrl, repoNameToGitUrl
 } from './support/middleware';
 import {forAzureDevOpsProject, forCredentials} from './support/checks';
+import {isDefinedAndNotNull, isUndefinedOrNull} from '../util/object-util';
 import {Container} from 'typescript-ioc';
 import {Logger, verboseLoggerFactory} from '../util/logger';
 
-export const command = 'delete [gitUrl]'
-export const desc = 'Deletes a hosted git repo';
+export const command = 'clone [gitUrl] [location]'
+export const aliases = []
+export const desc = 'Clones a hosted git repo';
 export const builder = (yargs: Argv<any>) => yargs
   .positional('gitUrl', {
     type: 'string',
-    description: 'The git url of the git repository that will be deleted',
+    description: 'The url of the repo that will be cloned',
     demandOption: true
+  })
+  .positional('location', {
+    type: 'string',
+    description: 'The directory where the repository should be cloned',
+    demandOption: false
   })
   .option('host', {
     type: 'string',
@@ -37,27 +43,35 @@ export const builder = (yargs: Argv<any>) => yargs
   .option('username', {
     type: 'string',
     alias: ['u'],
-    description: 'The username used to create the git repository. The value can also be provided via the `GIT_USERNAME` environment variable.',
+    description: 'The username used to create the git repository. The value can also be provided via the `GIT_USERNAME` environment variable.'
   })
   .option('token', {
     type: 'string',
     description: 'The token/password used to authenticate the user to the git server. The value can also be provided via the GIT_TOKEN environment variable.',
+  })
+  .option('configName', {
+    type: 'string',
+    description: 'The name for the git config',
+    default: 'Cloud-Native Toolkit'
+  })
+  .option('configEmail', {
+    type: 'string',
+    description: 'The email for the git config',
+    default: 'cloudnativetoolkit@gmail.com'
   })
   .options('debug', {
     type: 'boolean',
     description: 'Display debug information'
   })
   .middleware(parseHostOrgProjectAndBranchFromUrl(), true)
-  .middleware(loadFromEnv('host', 'GIT_HOST'), true)
-  .middleware(loadFromEnv('project', 'GIT_PROJECT'), true)
   .middleware(loadFromEnv('username', 'GIT_USERNAME'), true)
   .middleware(loadFromEnv('token', 'GIT_TOKEN'), true)
   .middleware(loadCredentialsFromFile(), true)
   .middleware(defaultOwnerToUsername(), true)
   .middleware(repoNameToGitUrl(), true)
-  .check(forAzureDevOpsProject())
   .check(forCredentials())
-export const handler =  async (argv: Arguments<DeleteArgs & {debug: boolean}>) => {
+  .check(forAzureDevOpsProject())
+export const handler =  async (argv: Arguments<CloneArgs & {debug: boolean}>) => {
 
   Container.bind(Logger).factory(verboseLoggerFactory(argv.debug))
 
@@ -65,28 +79,35 @@ export const handler =  async (argv: Arguments<DeleteArgs & {debug: boolean}>) =
 
   try {
     const repoApi: GitApi = await apiFromUrl(argv.gitUrl, credentials)
-    console.log(`Deleting repo: ${argv.gitUrl}`)
 
-    await repoApi.deleteRepo()
+    const type = repoApi.getConfig().type
+    const repo = repoApi.getConfig().repo
+    console.log(`Cloning ${type} repo: ${repo}`)
 
-    console.log(`  Repo deleted: ${argv.gitUrl}`)
+    const location: string = argv.location || repoApi.getConfig().url.replace(new RegExp('.*/(.+)'), '$1')
+
+    await repoApi.clone(location, {userConfig: {name: argv.configName, email: argv.configEmail}})
+
+    console.log(`  Repo cloned into: ${location}`)
   } catch (err) {
     if (isGitError(err)) {
       console.error(err.message)
+    } else if (/Authentication failed/.test(err.message)) {
+      console.error(err.message.replace('fatal: ', ''))
     } else if (argv.debug) {
-      console.error('Error deleting repo', err)
+      console.error('Error cloning repo', err)
     } else {
-      console.error('Error deleting repo')
+      console.error('Error cloning repo')
     }
     process.exit(1)
   }
 }
 
-interface DeleteArgs {
+interface CloneArgs {
   gitUrl: string;
+  location?: string;
   username: string;
   token: string;
-  host?: string;
-  owner?: string;
-  project?: string;
+  configEmail: string;
+  configName: string;
 }

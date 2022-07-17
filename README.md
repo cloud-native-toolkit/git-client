@@ -20,6 +20,80 @@ From there, any of the implemented apis can be called. For example:
 api.createWebhook({webhookUrl: 'https://webhook'})
 ```
 
+### Provided CLI commands
+
+#### create
+
+Creates a git repo from the provided information
+
+```shell
+export GIT_USERNAME="myuser"
+export GIT_TOKEN="xxx"
+gitu create my-repo -h github.com
+```
+
+To create the repo in a different org, include the `-o` flag
+
+```shell
+export GIT_USERNAME="myuser"
+export GIT_TOKEN="xxx"
+gitu create my-repo -h github.com -o myorg
+```
+
+#### exists
+
+Checks if a given repo exists and return some information about it.
+
+```shell
+export GIT_USERNAME="myuser"
+export GIT_TOKEN="xxx"
+gitu exists https://github.com/myuser/my-repo
+```
+
+or you can check for the repo using the parts of the url
+
+```shell
+export GIT_USERNAME="myuser"
+export GIT_TOKEN="xxx"
+gitu exists my-repo -h github.com
+```
+
+#### delete
+
+Deletes the provided repo
+
+```shell
+export GIT_USERNAME="myuser"
+export GIT_TOKEN="xxx"
+gitu delete https://github.com/myuser/my-repo
+```
+
+or you can delete the repo using the parts of the url
+
+```shell
+export GIT_USERNAME="myuser"
+export GIT_TOKEN="xxx"
+gitu delete my-repo -h github.com
+```
+
+#### clone
+
+Clones the repository, handling the credentials and the name and email config
+
+```shell
+export GIT_USERNAME="myuser"
+export GIT_TOKEN="xxx"
+gitu clone https://github.com/myuser/my-repo
+```
+
+or you can clone the repo using the parts of the url
+
+```shell
+export GIT_USERNAME="myuser"
+export GIT_TOKEN="xxx"
+gitu clone my-repo -h github.com
+```
+
 ### Provided APIs
 
 The exposed APIs are defined in `lib/git.api.ts` in the `GitApi` abstract class. The available API functions are:
@@ -73,3 +147,10 @@ The integration test runner will execute any files that match the pattern `*.isp
     ```
    
 **Note:** The integration tests will create a repository, execute some APIs, then delete the repository. The Personal Access Token provided for the `XXX_PASSWORD` environment variable needs to have enough permission to delete the repo.
+
+## Notes
+
+- clone {url} [{path}] (include name and email config)
+- pr create
+- pr merge
+- pr get

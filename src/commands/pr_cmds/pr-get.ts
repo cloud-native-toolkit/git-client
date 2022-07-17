@@ -2,23 +2,29 @@ import {Arguments, Argv} from 'yargs';
 import {Container} from 'typescript-ioc';
 import {dump} from 'js-yaml';
 
-import {apiFromPartialConfig, apiFromUrl, GitApi, isGitError} from '../lib';
+import {apiFromUrl, GetPullRequestOptions, GitApi, GitRepo, isGitError} from '../../lib';
 import {
   defaultOwnerToUsername,
   loadCredentialsFromFile,
   loadFromEnv,
-  parseHostOrgProjectAndBranchFromUrl, repoNameToGitUrl
-} from './support/middleware';
-import {forAzureDevOpsProject, forCredentials} from './support/checks';
-import {Logger, verboseLoggerFactory} from '../util/logger';
+  parseHostOrgProjectAndBranchFromUrl,
+  repoNameToGitUrl
+} from '../support/middleware';
+import {forAzureDevOpsProject, forCredentials} from '../support/checks';
+import {Logger, verboseLoggerFactory} from '../../util/logger';
 
-export const command = 'list [gitUrl]'
+export const command = 'get [gitUrl]'
 export const aliases = []
-export const desc = 'Lists the hosted git repos for the org or user';
+export const desc = 'Gets information about a pull request';
 export const builder = (yargs: Argv<any>) => yargs
   .positional('gitUrl', {
     type: 'string',
-    description: 'The git url of the org or another repo in the same org. Either gitUrl OR host and owner must be provided.'
+    description: 'The url of the repo that will be cloned',
+    demandOption: true
+  })
+  .option('pullNumber', {
+    type: 'number',
+    description: ''
   })
   .option('host', {
     type: 'string',
@@ -55,54 +61,98 @@ export const builder = (yargs: Argv<any>) => yargs
     description: 'Display debug information'
   })
   .middleware(parseHostOrgProjectAndBranchFromUrl(), true)
-  .middleware(loadFromEnv('host', 'GIT_HOST'), true)
-  .middleware(loadFromEnv('project', 'GIT_PROJECT'), true)
+  .middleware(copySourceBranchToPullNumber(), true)
   .middleware(loadFromEnv('username', 'GIT_USERNAME'), true)
   .middleware(loadFromEnv('token', 'GIT_TOKEN'), true)
   .middleware(loadCredentialsFromFile(), true)
   .middleware(defaultOwnerToUsername(), true)
   .middleware(repoNameToGitUrl(), true)
-  .check(forAzureDevOpsProject())
   .check(forCredentials())
-export const handler =  async (argv: Arguments<ListArgs & {debug: boolean, output: 'json' | 'yaml' | 'text'}>) => {
+  .check(forAzureDevOpsProject())
+export const handler =  async (argv: Arguments<GetPullRequestArgs & {debug: boolean, output: 'json' | 'yaml' | 'text'}>) => {
 
   Container.bind(Logger).factory(verboseLoggerFactory(argv.debug))
 
   const credentials = {username: argv.username, password: argv.token}
 
   try {
-    const orgApi: GitApi = argv.gitUrl
-      ? await apiFromUrl(argv.gitUrl, credentials)
-      : await apiFromPartialConfig({host: argv.host, org: argv.owner}, credentials)
+    const repoApi: GitApi = await apiFromUrl(argv.gitUrl, credentials)
 
-    const repos: string[] = await orgApi.listRepos()
+    const result = await repoApi.getPullRequest({
+      pullNumber: argv.pullNumber
+    })
 
     switch (argv.output) {
       case 'json':
-        console.log(JSON.stringify({repos}, null, 2))
+        console.log(JSON.stringify(result, null, 2))
         break
       case 'yaml':
-        console.log(dump({repos}))
-        break;
+        console.log(dump(result))
+        break
       default:
-        repos.forEach(repo => console.log(repo))
+        console.log('Pull request found!')
+        console.log(`  Pull number:   ${result.pullNumber}`)
+        console.log(`  Source branch: ${result.sourceBranch}`)
+        console.log(`  Target branch: ${result.targetBranch}`)
+        console.log(`  Status:        ${result.status}`)
     }
   } catch (err) {
+    let message = ''
+    let type;
     if (isGitError(err)) {
-      console.error(err.message)
+      message = err.message
+      type = err.type
+    } else if (/Authentication failed/.test(err.message)) {
+      message = err.message.replace('fatal: ', '')
     } else if (argv.debug) {
-      console.error('Error listing repos', err)
-    } else {
-      console.error('Error listing repos')
+      message = 'Error getting pull request'
     }
+
+    const result = {
+      message,
+      pullNumber: argv.pullNumber,
+      errorType: type
+    }
+
+    if (argv.output === 'json') {
+      console.log(JSON.stringify(result, null, 2))
+    } else if (argv.output === 'yaml') {
+      console.log(dump(result))
+    } else {
+      console.log(message)
+
+      if (argv.debug) {
+        console.log('Error: ', err)
+      }
+    }
+
     process.exit(1)
   }
 }
 
-interface ListArgs {
-  gitUrl?: string;
-  host?: string;
-  owner?: string;
+interface GetPullRequestArgs {
+  pullNumber: number;
+  gitUrl: string;
   username: string;
   token: string;
+}
+
+const copySourceBranchToPullNumber = () => {
+  return (yargs) => {
+    const result: {pullNumber?: string} = {}
+
+    result.pullNumber = yargs.pullNumber || yargs.sourceBranch
+
+    return result
+  }
+}
+
+const getTargetBranch = async (repoApi: GitApi, targetBranch: string): Promise<string> => {
+  if (targetBranch) {
+    return targetBranch
+  }
+
+  const repoInfo: GitRepo = await repoApi.getRepoInfo()
+
+  return repoInfo.default_branch
 }

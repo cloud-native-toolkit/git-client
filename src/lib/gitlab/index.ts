@@ -13,6 +13,7 @@ import {
   MergeConflict,
   MergePullRequestOptions,
   PullRequest,
+  PullRequestStatus,
   UnknownWebhookError,
   UpdatePullRequestBranchOptions,
   WebhookAlreadyExists
@@ -140,7 +141,8 @@ export class Gitlab extends GitBase implements GitApi {
         sourceBranch: res.body.source_branch,
         targetBranch: res.body.target_branch,
         mergeStatus: res.body.merge_status,
-        hasConflicts: res.body.has_conflicts
+        hasConflicts: res.body.has_conflicts,
+        status: mapPullRequestStatus(res.body),
       }))
   }
 
@@ -157,12 +159,19 @@ export class Gitlab extends GitBase implements GitApi {
       })
       .then(res => ({
         pullNumber: res.body.iid,
+        status: mapPullRequestStatus(res.body),
         sourceBranch,
         targetBranch
-      }))
+      })) as Promise<PullRequest>
   }
 
-  async mergePullRequestInternal({pullNumber, method, delete_branch_after_merge, message, title, rateLimit}: MergePullRequestOptions): Promise<string> {
+  async mergePullRequestInternal(options: MergePullRequestOptions): Promise<string> {
+
+    const pullNumber = options.pullNumber
+    const method = options.method
+    const delete_branch_after_merge = options.delete_branch_after_merge || false
+    const message = options.message
+    const title = options.title
 
     let status: string = ''
     let conflicts: boolean = false
@@ -242,7 +251,7 @@ export class Gitlab extends GitBase implements GitApi {
 
   async createWebhook(options: CreateWebhook): Promise<string> {
     try {
-      const response: Response = await post(this.getRepoUrl() + '/hooks')
+      const response: Response = await (post(this.getRepoUrl() + '/hooks')
         .set('Private-Token', this.config.password)
         .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
         .accept('application/json')
@@ -250,7 +259,7 @@ export class Gitlab extends GitBase implements GitApi {
         .catch(error => {
           console.log('Error', error)
           throw error;
-        });
+        }) as Promise<Response>)
 
       return response.body.id;
     } catch (err) {
@@ -366,7 +375,7 @@ export class Gitlab extends GitBase implements GitApi {
       .set('Private-Token', this.config.password)
       .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
       .accept('application/json')
-      .then(res => res.body.map(repo => repo.http_url_to_repo))
+      .then(res => res.body.map(repo => repo.http_url_to_repo)) as Promise<string[]>
   }
 
   async deleteRepo(): Promise<GitApi> {
@@ -400,24 +409,49 @@ export class Gitlab extends GitBase implements GitApi {
       .set('Private-Token', this.config.password)
       .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
       .accept('application/json')
-      .then(res => ({
-        id: res.body.id,
-        slug: res.body.path_with_namespace,
-        http_url: res.body.http_url_to_repo,
-        name: res.body.path,
-        description: res.body.description,
-        is_private: res.body.visibility === 'private'
-      }))
+      .then(res => {
+        const gitRepo: GitRepo = {
+          id: res.body.id,
+          slug: res.body.path_with_namespace,
+          http_url: res.body.http_url_to_repo,
+          name: res.body.path,
+          description: res.body.description,
+          is_private: res.body.visibility === 'private',
+          default_branch: res.body.default_branch
+        }
+
+        return gitRepo
+      })
       .catch(err => {
         if (err.response.status === 404) {
           throw new RepoNotFound(this.config.url)
         }
 
         throw err
-      })
+      }) as Promise<GitRepo>
   }
 
   async getBranches(): Promise<GitBranch[]> {
     throw new Error('method not implemented: getBranches()')
   }
+}
+
+const mapPullRequestStatus = (pr: {state: 'opened' | 'closed', merge_status: string, merged_at?: string}): PullRequestStatus => {
+  switch (pr.state) {
+    case 'opened':
+      if (pr.merge_status === 'cannot_be_merged') {
+        return PullRequestStatus.Conflicts
+      } else {
+        return PullRequestStatus.Active
+      }
+    case 'closed':
+      if (pr.merged_at) {
+        return PullRequestStatus.Completed
+      } else {
+        return PullRequestStatus.Abandoned
+      }
+    default:
+      return PullRequestStatus.NotSet
+  }
+  return PullRequestStatus.Completed
 }

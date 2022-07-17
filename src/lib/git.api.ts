@@ -2,6 +2,12 @@ import {SimpleGit} from 'simple-git';
 
 import {GitHost, GitRepo, TypedGitRepoConfig, Webhook} from './git.model';
 import {EvaluateErrorForRetry} from '../util/retry-with-delay';
+import {promises} from 'fs';
+import {join} from 'path';
+import {isString} from '../util/string-util';
+import {isError} from '../util/error-util';
+import {Logger} from '../util/logger';
+import {Container} from 'typescript-ioc';
 
 export class CreateWebhook {
   jenkinsUrl?: string;
@@ -107,12 +113,13 @@ export interface MergePullRequestOptions extends BaseOptions {
   resolver?: MergeResolver;
   title?: string;
   message?: string;
+  userConfig?: GitUserConfig;
   delete_branch_after_merge?: boolean;
+  waitForBlocked?: string;
 }
 
 export interface UpdateAndMergePullRequestOptions extends MergePullRequestOptions, BaseOptions {
   retryCount?: number;
-  userConfig?: GitUserConfig;
 }
 
 export interface GetPullRequestOptions extends BaseOptions {
@@ -123,10 +130,20 @@ export interface UpdatePullRequestBranchOptions extends BaseOptions {
   pullNumber?: number;
 }
 
+export enum PullRequestStatus {
+  NotSet = 'notset',
+  Active = 'active',
+  Abandoned = 'abandoned',
+  Completed = 'completed',
+  Conflicts = 'conflicts',
+  Blocked = 'blocked'
+}
+
 export interface PullRequest {
   pullNumber: number;
   sourceBranch: string;
   targetBranch: string;
+  status: PullRequestStatus;
   mergeStatus?: string;
   hasConflicts?: boolean;
 }
@@ -216,4 +233,49 @@ export abstract class GitApi<T extends TypedGitRepoConfig = TypedGitRepoConfig> 
   abstract listRepos(): Promise<string[]>;
 
   abstract getRepoInfo(): Promise<GitRepo>;
+}
+
+export const unionMergeResolver: MergeResolver = async (git: SimpleGitWithApi, conflicts: string[]): Promise<{resolvedConflicts: string[], conflictErrors?: Error[]}> => {
+  const logger: Logger = Container.get(Logger)
+
+  const processConflictFile = async (conflictFile: string): Promise<string> => {
+    logger.debug('Processing conflict: ', conflictFile)
+
+    const commonResult: string = await (git.raw(['show', `:1:${conflictFile}`]) as Promise<string>)
+    const oursResult: string = await (git.raw(['show', `:2:${conflictFile}`]) as Promise<string>)
+    const theirsResult: string = await (git.raw(['show', `:3:${conflictFile}`]) as Promise<string>)
+
+    logger.debug(`Common result: ${commonResult.toString()}`)
+    logger.debug(`Ours result: ${oursResult.toString()}`)
+    logger.debug(`Theirs result: ${theirsResult.toString()}`)
+
+    const commonFile = 'tmp.common'
+    const oursFile = 'tmp.ours';
+    const theirsFile = 'tmp.theirs';
+
+    await promises.writeFile(join(git.repoDir, commonFile), commonResult.toString())
+    await promises.writeFile(join(git.repoDir, oursFile), oursResult.toString())
+    await promises.writeFile(join(git.repoDir, theirsFile), theirsResult.toString())
+
+    const mergeResult: string = await (git.raw([`merge-file`, '--union', '-p', `./${oursFile}`, `./${commonFile}`, `./${theirsFile}`]) as Promise<string>)
+
+    logger.debug(`Merge result: ${mergeResult.toString()}`)
+    await promises.writeFile(join(git.repoDir, conflictFile), mergeResult.toString())
+
+    await promises.unlink(join(git.repoDir, commonFile))
+    await promises.unlink(join(git.repoDir, oursFile))
+    await promises.unlink(join(git.repoDir, theirsFile))
+
+    return conflictFile;
+  }
+
+  const result: Array<string | Error> = []
+  for (let i = 0; i < conflicts.length; i++) {
+    result.push(await processConflictFile(conflicts[i]).catch(err => err))
+  }
+
+  const resolvedConflicts: string[] = result.filter(isString);
+  const conflictErrors: Error[] = result.filter(isError);
+
+  return {resolvedConflicts, conflictErrors};
 }

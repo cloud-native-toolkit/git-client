@@ -1,14 +1,16 @@
 import {Arguments, Argv} from 'yargs';
+import {Container} from 'typescript-ioc';
+import {dump} from 'js-yaml';
+
 import {apiFromUrl, ErrorType, GitApi, GitRepo, isGitError} from '../lib';
 import {forAzureDevOpsProject, forCredentials} from './support/checks';
 import {
   defaultOwnerToUsername,
   loadCredentialsFromFile,
   loadFromEnv,
-  parseHostOrgAndProjectFromUrl,
+  parseHostOrgProjectAndBranchFromUrl,
   repoNameToGitUrl
 } from './support/middleware';
-import {Container} from 'typescript-ioc';
 import {Logger, verboseLoggerFactory} from '../util/logger';
 
 export const command = 'exists [gitUrl]'
@@ -47,13 +49,19 @@ export const builder = (yargs: Argv<any>) => yargs
     type: 'boolean',
     description: 'Display debug information'
   })
+  .option('output', {
+    type: 'string',
+    choices: ['json', 'yaml', 'text'],
+    description: 'Print the output in the specified format. If not provided the information is printed in human readable text.',
+    default: 'text'
+  })
   .options('quiet', {
     type: 'boolean',
     alias: ['q'],
     description: 'Flag indicating JSON output should be suppressed.',
     default: false
   })
-  .middleware(parseHostOrgAndProjectFromUrl(), true)
+  .middleware(parseHostOrgProjectAndBranchFromUrl(), true)
   .middleware(loadFromEnv('host', 'GIT_HOST'), true)
   .middleware(loadFromEnv('project', 'GIT_PROJECT'), true)
   .middleware(loadFromEnv('username', 'GIT_USERNAME'), true)
@@ -63,7 +71,7 @@ export const builder = (yargs: Argv<any>) => yargs
   .middleware(repoNameToGitUrl(), true)
   .check(forAzureDevOpsProject())
   .check(forCredentials())
-export const handler =  async (argv: Arguments<ExistsArgs & {debug: boolean}>) => {
+export const handler =  async (argv: Arguments<ExistsArgs & {debug?: boolean, output?: 'json' | 'yaml' | 'text', quiet?: boolean}>) => {
 
   Container.bind(Logger).factory(verboseLoggerFactory(argv.debug))
 
@@ -75,7 +83,22 @@ export const handler =  async (argv: Arguments<ExistsArgs & {debug: boolean}>) =
     const repoInfo: GitRepo = await repoApi.getRepoInfo()
 
     if (!argv.quiet) {
-      console.log(JSON.stringify(repoInfo, null, 2))
+      switch (argv.output) {
+        case 'json':
+          console.log(JSON.stringify(repoInfo, null, 2))
+          break
+        case 'yaml':
+          console.log(dump(repoInfo))
+          break
+        default:
+          console.log(`Repo found!`)
+          console.log(`  Name:        ${repoInfo.name}`)
+          console.log(`  Description: ${repoInfo.description}`)
+          console.log(`  Main branch: ${repoInfo.default_branch}`)
+          console.log(`  Is private:  ${repoInfo.is_private}`)
+          console.log(`  Slug:        ${repoInfo.slug}`)
+          console.log(`  Http url:    ${repoInfo.http_url}`)
+      }
     }
 
     process.exit(0)
@@ -97,7 +120,6 @@ interface ExistsArgs {
   gitUrl: string;
   username: string;
   token: string;
-  quiet?: boolean;
   host?: string;
   owner?: string;
   project?: string;
