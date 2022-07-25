@@ -173,7 +173,7 @@ export class Gitea extends GitBase implements GitApi {
       .auth(this.username, this.password)
       .set('User-Agent', `${this.username} via ibm-garage-cloud cli`)
       .accept('application/vnd.github.v3+json')
-      .retry(2, retryCallback)
+      .retry(10, retryCallback)
   }
 
   get(url: string, retryCallback: (err: Error, res: Response) => boolean = defaultRetryCallback): Request {
@@ -182,7 +182,7 @@ export class Gitea extends GitBase implements GitApi {
       .auth(this.username, this.password)
       .set('User-Agent', `${this.username} via ibm-garage-cloud cli`)
       .accept('application/vnd.github.v3+json')
-      .retry(5, retryCallback)
+      .retry(10, retryCallback)
   }
 
   post(url: string, retryCallback: (err: Error, res: Response) => boolean = defaultRetryCallback): Request {
@@ -190,7 +190,7 @@ export class Gitea extends GitBase implements GitApi {
       .auth(this.username, this.password)
       .set('User-Agent', `${this.username} via ibm-garage-cloud cli`)
       .accept('application/vnd.github.v3+json')
-      .retry(5, retryCallback)
+      .retry(10, retryCallback)
   }
 
   async deleteBranch({branch}: DeleteBranchOptions): Promise<string> {
