@@ -53,7 +53,7 @@ export const builder = (yargs: Argv<any>) => yargs
     type: 'string',
     choices: ['json', 'yaml', 'text'],
     description: 'Print the output in the specified format. If not provided the information is printed in human readable text.',
-    default: 'text'
+    default: 'json'
   })
   .options('quiet', {
     type: 'boolean',

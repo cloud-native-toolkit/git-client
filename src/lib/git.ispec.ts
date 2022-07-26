@@ -244,7 +244,7 @@ describeTestCases('given $name', ({name, baseUrl, org, username, password, proje
           .then((content: Buffer) => load(content.toString()))
 
         expect(fileContent.resources).toEqual(['resourceA', 'resourceB'])
-      }, 360000);
+      }, 3600000);
     });
   });
 })
