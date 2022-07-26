@@ -203,7 +203,7 @@ export class AzureDevops extends GitBase<AzureTypedGitRepoConfig> implements Git
         name: result.name,
         description: '',
         is_private: false,
-        default_branch: result.defaultBranch
+        default_branch: result.defaultBranch.replace('refs/heads/', '')
       }))
   }
 

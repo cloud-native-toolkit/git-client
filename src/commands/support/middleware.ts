@@ -83,7 +83,11 @@ export const repoNameToGitUrl = () => {
   }
 }
 
-const parseBranchNames = (branchNameString: string): {sourceBranch?: string, targetBranch?: string} => {
+const parseBranchNames = (branchNameString: string, defaultValues: {sourceBranch?: string, targetBranch?: string} = {}): {sourceBranch?: string, targetBranch?: string} => {
+  if (defaultValues.sourceBranch) {
+    return defaultValues
+  }
+
   if (!branchNameString) {
     return {}
   }
@@ -114,7 +118,7 @@ export const parseHostOrgProjectAndBranchFromUrl = () => {
       const branchParts = yargs.gitUrl.split('#')
 
       const gitUrl = branchParts[0];
-      const {sourceBranch, targetBranch} = parseBranchNames(branchParts.length > 1 ? branchParts[1] : '')
+      const {sourceBranch, targetBranch} = parseBranchNames(branchParts.length > 1 ? branchParts[1] : '', yargs)
 
       const result = regex.exec(gitUrl)
 
