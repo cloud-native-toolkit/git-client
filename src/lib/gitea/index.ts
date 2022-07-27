@@ -250,7 +250,7 @@ export class Gitea extends GitBase implements GitApi {
       })
       .then(res => {
         console.log('Merge result: ', JSON.stringify(res, null, 2))
-        if (res.status === 500 && /CONFLICT.*Automatic merge failed/.test(res.body.message)) {
+        if (res.status === 500 && /Automatic merge failed.*fix conflicts and then commit the result/.test(res.body.message)) {
           console.log('Merge conflict!!')
           throw new MergeConflict(options.pullNumber)
         }
@@ -261,7 +261,7 @@ export class Gitea extends GitBase implements GitApi {
         if (err.response.status === 405) {
           console.log('Merge conflict: ', err)
           throw new MergeConflict(options.pullNumber)
-        } else if (err.response.status === 500 && /fix conflicts and then commit the result/.test(err.message)) {
+        } else if (err.response.status === 500 && /Automatic merge failed.*fix conflicts and then commit the result/.test(err.response.body.text)) {
           throw new MergeConflict(options.pullNumber)
         } else {
           throw err
