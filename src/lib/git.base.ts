@@ -1,4 +1,4 @@
-import {promises} from 'fs';
+import {promises, readFileSync} from 'fs';
 import {Optional} from 'optional-typescript';
 import simpleGit, {BranchSummary, SimpleGit, SimpleGitOptions, StatusResult} from 'simple-git';
 import {Container} from 'typescript-ioc';
@@ -127,6 +127,10 @@ export abstract class GitBase<T extends TypedGitRepoConfig = TypedGitRepoConfig>
     return this.config.branch
   }
 
+  get caCert(): {cert: string, certFile: string} | undefined {
+    return this.config.caCert
+  }
+
   get personalOrg() {
     return !this.owner || ((this.owner || "").toLocaleLowerCase() === (this.username || "").toLocaleLowerCase())
   }
@@ -151,10 +155,7 @@ export abstract class GitBase<T extends TypedGitRepoConfig = TypedGitRepoConfig>
     const branches: BranchSummary = (await git.branch() as any);
     await git.pull('origin', branches.current);
 
-    if (input.userConfig) {
-      await git.addConfig('user.email', input.userConfig.email, true, 'local');
-      await git.addConfig('user.name', input.userConfig.name, true, 'local');
-    }
+    await addGitConfig(git, input)
 
     git.gitApi = this;
     git.repoDir = repoDir;
@@ -388,4 +389,19 @@ const getUserConfig = (userConfig?: GitUserConfig): GitUserConfig => {
     name: 'Cloud-Native Toolkit',
     email: 'cloudnativetoolkit@gmail.com'
   }
+}
+
+const SSL_CA_INFO = 'http.sslCAInfo'
+
+const addGitConfig = async (git: SimpleGit, {userConfig, config}: LocalGitConfig) => {
+
+  if (userConfig) {
+    await git.addConfig('user.email', userConfig.email, true, 'local');
+    await git.addConfig('user.name', userConfig.name, true, 'local');
+  }
+
+  if (Object.keys(config).includes(SSL_CA_INFO)) {
+    await git.addConfig(SSL_CA_INFO, config[SSL_CA_INFO], true, 'local')
+  }
+
 }

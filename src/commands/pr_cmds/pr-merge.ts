@@ -9,7 +9,6 @@ import {
   isGitError,
   MergeMethod,
   MergePullRequestOptions,
-  MergeResolver,
   unionMergeResolver
 } from '../../lib';
 import {
@@ -21,11 +20,13 @@ import {
 } from '../support/middleware';
 import {forAzureDevOpsProject, forCredentials} from '../support/checks';
 import {Logger, verboseLoggerFactory} from '../../util/logger';
+import {SSLConfig} from '../support/model';
+import {defaultBuilder} from '../support/builder';
 
 export const command = 'merge [gitUrl]'
 export const aliases = []
 export const desc = 'Merges a pull request';
-export const builder = (yargs: Argv<any>) => yargs
+export const builder = (yargs: Argv<any>) => defaultBuilder(yargs)
   .positional('gitUrl', {
     type: 'string',
     description: 'The url of the repo with the pull request. The pullNumber can be specified after the hash - e.g. https://github.com/org/repo#pullNumber',
@@ -169,7 +170,7 @@ export const handler =  async (argv: Arguments<MergePullRequestArgs & {debug: bo
   }
 }
 
-interface MergePullRequestArgs {
+interface MergePullRequestArgs extends SSLConfig {
   pullNumber: number;
   gitUrl: string;
   method: MergeMethod;

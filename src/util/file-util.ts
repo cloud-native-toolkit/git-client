@@ -73,3 +73,12 @@ export const fileContains = async (path: string, contents: string): Promise<bool
 export const fileExists = async (path: string): Promise<boolean> => {
   return await fs.access(path, fs.constants.R_OK).then(v => true).catch(err => false);
 }
+
+export const fileExistsSync = (path: string): boolean => {
+  try {
+    fs.accessSync(path, fs.constants.R_OK)
+    return true
+  } catch (err) {
+    return false
+  }
+}

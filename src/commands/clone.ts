@@ -1,5 +1,6 @@
 import {Arguments, Argv} from 'yargs';
-import {apiFromPartialConfig, apiFromUrl, GitApi, isGitError} from '../lib';
+import {Container} from 'typescript-ioc';
+
 import {
   defaultOwnerToUsername,
   loadCredentialsFromFile,
@@ -7,14 +8,16 @@ import {
   parseHostOrgProjectAndBranchFromUrl, repoNameToGitUrl
 } from './support/middleware';
 import {forAzureDevOpsProject, forCredentials} from './support/checks';
-import {isDefinedAndNotNull, isUndefinedOrNull} from '../util/object-util';
-import {Container} from 'typescript-ioc';
+import {SSLConfig} from './support/model';
+import {defaultBuilder} from './support/builder';
+import {apiFromUrl, GitApi, isGitError} from '../lib';
+import {loadCaCert} from '../util/ca-cert';
 import {Logger, verboseLoggerFactory} from '../util/logger';
 
 export const command = 'clone [gitUrl] [location]'
 export const aliases = []
 export const desc = 'Clones a hosted git repo';
-export const builder = (yargs: Argv<any>) => yargs
+export const builder = (yargs: Argv<any>) => defaultBuilder(yargs)
   .positional('gitUrl', {
     type: 'string',
     description: 'The url of the repo that will be cloned',
@@ -75,7 +78,7 @@ export const handler =  async (argv: Arguments<CloneArgs & {debug: boolean}>) =>
 
   Container.bind(Logger).factory(verboseLoggerFactory(argv.debug))
 
-  const credentials = {username: argv.username, password: argv.token}
+  const credentials = {username: argv.username, password: argv.token, caCert: argv.caCert}
 
   try {
     const repoApi: GitApi = await apiFromUrl(argv.gitUrl, credentials)
@@ -86,7 +89,10 @@ export const handler =  async (argv: Arguments<CloneArgs & {debug: boolean}>) =>
 
     const location: string = argv.location || repoApi.getConfig().url.replace(new RegExp('.*/(.+)'), '$1')
 
-    await repoApi.clone(location, {userConfig: {name: argv.configName, email: argv.configEmail}})
+    const caCert: {cert: string, certFile: string} | undefined = await loadCaCert(argv.caCert)
+    const config = caCert ? {'http.sslCAInfo': caCert.certFile} : {}
+
+    await repoApi.clone(location, {userConfig: {name: argv.configName, email: argv.configEmail}, config})
 
     console.log(`  Repo cloned into: ${location}`)
   } catch (err) {
@@ -103,7 +109,7 @@ export const handler =  async (argv: Arguments<CloneArgs & {debug: boolean}>) =>
   }
 }
 
-interface CloneArgs {
+interface CloneArgs extends SSLConfig {
   gitUrl: string;
   location?: string;
   username: string;

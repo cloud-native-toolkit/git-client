@@ -11,11 +11,13 @@ import {
 } from './support/middleware';
 import {forAzureDevOpsProject, forCredentials} from './support/checks';
 import {Logger, verboseLoggerFactory} from '../util/logger';
+import {SSLConfig} from './support/model';
+import {defaultBuilder} from './support/builder';
 
 export const command = 'list [gitUrl]'
 export const aliases = []
 export const desc = 'Lists the hosted git repos for the org or user';
-export const builder = (yargs: Argv<any>) => yargs
+export const builder = (yargs: Argv<any>) => defaultBuilder(yargs)
   .positional('gitUrl', {
     type: 'string',
     description: 'The git url of the org or another repo in the same org. Either gitUrl OR host and owner must be provided.'
@@ -68,7 +70,7 @@ export const handler =  async (argv: Arguments<ListArgs & {debug: boolean, outpu
 
   Container.bind(Logger).factory(verboseLoggerFactory(argv.debug))
 
-  const credentials = {username: argv.username, password: argv.token}
+  const credentials = {username: argv.username, password: argv.token, caCert: argv.caCert}
 
   try {
     const orgApi: GitApi = argv.gitUrl
@@ -99,7 +101,7 @@ export const handler =  async (argv: Arguments<ListArgs & {debug: boolean, outpu
   }
 }
 
-interface ListArgs {
+interface ListArgs extends SSLConfig {
   gitUrl?: string;
   host?: string;
   owner?: string;

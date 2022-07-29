@@ -12,6 +12,8 @@ import {
 import {forAzureDevOpsProject, forCredentials} from './support/checks';
 import {isDefinedAndNotNull, isUndefinedOrNull} from '../util/object-util';
 import {Logger, verboseLoggerFactory} from '../util/logger';
+import {defaultBuilder} from './support/builder';
+import {SSLConfig} from './support/model';
 
 const updatePrivateRepo = () => {
   return yargs => {
@@ -40,7 +42,7 @@ const publicPrivateRepo = () => {
 export const command = 'create [name]'
 export const aliases = []
 export const desc = 'Creates a hosted git repo';
-export const builder = (yargs: Argv<any>) => yargs
+export const builder = (yargs: Argv<any>) => defaultBuilder(yargs)
   .positional('name', {
     type: 'string',
     description: 'The name of the repo that will be created',
@@ -116,7 +118,7 @@ export const handler =  async (argv: Arguments<CreateArgs & {debug: boolean, out
 
   Container.bind(Logger).factory(verboseLoggerFactory(argv.debug))
 
-  const credentials = {username: argv.username, password: argv.token}
+  const credentials = {username: argv.username, password: argv.token, caCert: argv.caCert}
 
   try {
     const orgApi: GitApi = argv.gitUrl
@@ -157,7 +159,7 @@ export const handler =  async (argv: Arguments<CreateArgs & {debug: boolean, out
   }
 }
 
-interface CreateArgs {
+interface CreateArgs extends SSLConfig {
   name: string;
   gitUrl?: string;
   host?: string;

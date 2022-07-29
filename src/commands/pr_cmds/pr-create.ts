@@ -12,6 +12,8 @@ import {
 } from '../support/middleware';
 import {forAzureDevOpsProject, forCredentials} from '../support/checks';
 import {Logger, verboseLoggerFactory} from '../../util/logger';
+import {SSLConfig} from '../support/model';
+import {defaultBuilder} from '../support/builder';
 
 
 export const forSourceBranch = () => {
@@ -27,7 +29,7 @@ export const forSourceBranch = () => {
 export const command = 'create [gitUrl]'
 export const aliases = []
 export const desc = 'Creates a pull request against hosted git repo';
-export const builder = (yargs: Argv<any>) => yargs
+export const builder = (yargs: Argv<any>) => defaultBuilder(yargs)
   .positional('gitUrl', {
     type: 'string',
     description: 'The url of the repo that will be cloned',
@@ -103,7 +105,7 @@ export const handler =  async (argv: Arguments<CreatePullRequestArgs & {debug: b
 
   Container.bind(Logger).factory(verboseLoggerFactory(argv.debug))
 
-  const credentials = {username: argv.username, password: argv.token}
+  const credentials = {username: argv.username, password: argv.token, caCert: argv.caCert}
 
   try {
     const repoApi: GitApi = await apiFromUrl(argv.gitUrl, credentials)
@@ -174,7 +176,7 @@ export const handler =  async (argv: Arguments<CreatePullRequestArgs & {debug: b
   }
 }
 
-interface CreatePullRequestArgs {
+interface CreatePullRequestArgs extends SSLConfig {
   gitUrl: string;
   sourceBranch: string;
   targetBranch?: string;

@@ -20,7 +20,7 @@ import {
 } from '../git.api';
 import {GitBase} from '../git.base';
 import {GitRepo, RepoNotFound, TypedGitRepoConfig, Webhook} from '../git.model';
-import {isResponseError} from '../../util/superagent-support';
+import {applyCert, isResponseError} from '../../util/superagent-support';
 import first from '../../util/first';
 import sleep from '../../util/sleep';
 
@@ -96,19 +96,48 @@ export class Gitlab extends GitBase implements GitApi {
     return `${this.getBaseUrl()}/projects/${this.config.owner}%2F${this.config.repo}`;
   }
 
-  async deleteBranch({branch}: DeleteBranchOptions): Promise<string> {
-    return deleteUrl(`${this.getRepoUrl()}/repository/branches/${branch}`)
-      .set('Private-Token', this.config.password)
-      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
+  get(url: string) {
+    const req = get(url)
+      .set('Private-Token', this.password)
       .accept('application/json')
+
+    return applyCert(req, this.caCert)
+  }
+
+  post(url: string) {
+    const req = post(url)
+      .set('Private-Token', this.password)
+      .set('User-Agent', `${this.username} via ibm-garage-cloud cli`)
+      .accept('application/json')
+
+    return applyCert(req, this.caCert)
+  }
+
+  put(url: string) {
+    const req = put(url)
+      .set('Private-Token', this.password)
+      .set('User-Agent', `${this.username} via ibm-garage-cloud cli`)
+      .accept('application/json')
+
+    return applyCert(req, this.caCert)
+  }
+
+  delete(url: string) {
+    const req = deleteUrl(url)
+      .set('Private-Token', this.password)
+      .set('User-Agent', `${this.username} via ibm-garage-cloud cli`)
+      .accept('application/json')
+
+    return applyCert(req, this.caCert)
+  }
+
+  async deleteBranch({branch}: DeleteBranchOptions): Promise<string> {
+    return this.delete(`${this.getRepoUrl()}/repository/branches/${branch}`)
       .then(() => 'success')
   }
 
   async listFiles(): Promise<Array<{path: string, url?: string, contents?: string}>> {
-    const response: Response = await get(this.buildUrl(this.getRepoUrl() + '/repository/tree', [this.branchParam(), 'per_page=1000']))
-      .set('Private-Token', this.config.password)
-      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
-      .accept('application/json');
+    const response: Response = await this.get(this.buildUrl(this.getRepoUrl() + '/repository/tree', [this.branchParam(), 'per_page=1000']))
 
     const treeResponse: Tree[] = response.body;
 
@@ -121,10 +150,7 @@ export class Gitlab extends GitBase implements GitApi {
   }
 
   async getFileContents(fileDescriptor: {path: string, url?: string}): Promise<string | Buffer> {
-    const response: Response = await get(fileDescriptor.url)
-      .set('Private-Token', this.config.password)
-      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
-      .accept('application/json');
+    const response: Response = await this.get(fileDescriptor.url)
 
     const fileResponse: FileResponse = response.body;
 
@@ -132,10 +158,7 @@ export class Gitlab extends GitBase implements GitApi {
   }
 
   async getPullRequest({pullNumber}: GetPullRequestOptions): Promise<PullRequest> {
-    return get(`${this.getRepoUrl()}/merge_requests/${pullNumber}`)
-      .set('Private-Token', this.config.password)
-      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
-      .accept('application/json')
+    return this.get(`${this.getRepoUrl()}/merge_requests/${pullNumber}`)
       .then(res => ({
         pullNumber: res.body.iid,
         sourceBranch: res.body.source_branch,
@@ -147,10 +170,7 @@ export class Gitlab extends GitBase implements GitApi {
   }
 
   async createPullRequest({sourceBranch, targetBranch, title = 'pr', draft, issue, maintainer_can_modify}: CreatePullRequestOptions): Promise<PullRequest> {
-    return post(`${this.getRepoUrl()}/merge_requests`)
-      .set('Private-Token', this.config.password)
-      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
-      .accept('application/json')
+    return this.post(`${this.getRepoUrl()}/merge_requests`)
       .send({
         source_branch: sourceBranch,
         target_branch: targetBranch,
@@ -199,10 +219,7 @@ export class Gitlab extends GitBase implements GitApi {
 
     const mergeMessage = `${title}\n${!message ? '' : message}`
 
-    return put(`${this.getRepoUrl()}/merge_requests/${pullNumber}/merge`)
-      .set('Private-Token', this.config.password)
-      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
-      .accept('application/json')
+    return this.put(`${this.getRepoUrl()}/merge_requests/${pullNumber}/merge`)
       .send(
         Object.assign({
           should_remove_source_branch: delete_branch_after_merge,
@@ -216,15 +233,12 @@ export class Gitlab extends GitBase implements GitApi {
   }
 
   async updatePullRequestBranch({pullNumber, rateLimit}: UpdatePullRequestBranchOptions): Promise<string> {
-    return put(`${this.getRepoUrl()}/merge_requests/${pullNumber}/rebase`)
-      .set('Private-Token', this.config.password)
-      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
-      .accept('application/json')
+    return this.put(`${this.getRepoUrl()}/merge_requests/${pullNumber}/rebase`)
       .then(() => 'success')
   }
 
   async getDefaultBranch(): Promise<string> {
-    const response: Response = await get(this.getRepoUrl() + '/repository/branches')
+    const response: Response = await this.get(this.getRepoUrl() + '/repository/branches')
       .set('Private-Token', this.config.password)
       .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
       .accept('application/json');
@@ -251,10 +265,7 @@ export class Gitlab extends GitBase implements GitApi {
 
   async createWebhook(options: CreateWebhook): Promise<string> {
     try {
-      const response: Response = await (post(this.getRepoUrl() + '/hooks')
-        .set('Private-Token', this.config.password)
-        .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
-        .accept('application/json')
+      const response: Response = await (this.post(this.getRepoUrl() + '/hooks')
         .send(this.buildWebhookData(Object.assign({}, this.config, options)))
         .catch(error => {
           console.log('Error', error)
@@ -334,19 +345,13 @@ export class Gitlab extends GitBase implements GitApi {
     } : {})
 
     if (this.personalOrg) {
-      return post(`${this.getBaseUrl()}/projects`)
-        .set('Private-Token', this.config.password)
-        .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
-        .accept('application/json')
+      return this.post(`${this.getBaseUrl()}/projects`)
         .send(payload)
         .then(res => {
           return this.getRepoApi({repo: res.body.name, url: res.body.http_url_to_repo})
         })
     } else {
-      const namespaceId: number = await get(this.getBaseUrl() + '/groups?search=' + this.config.owner)
-        .set('Private-Token', this.config.password)
-        .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
-        .accept('application/json')
+      const namespaceId: number = await this.get(this.getBaseUrl() + '/groups?search=' + this.config.owner)
         .then(res => {
           const groups: Array<{id: number}> = res.body;
 
@@ -357,10 +362,7 @@ export class Gitlab extends GitBase implements GitApi {
           return groups[0].id
         })
 
-      return post(this.getBaseUrl() + '/projects')
-        .set('Private-Token', this.config.password)
-        .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
-        .accept('application/json')
+      return this.post(this.getBaseUrl() + '/projects')
         .send(Object.assign({}, payload, {namespace_id: namespaceId}))
         .then(async res => {
           return this.getRepoApi({repo: res.body.name, url: res.body.http_url_to_repo})
@@ -371,20 +373,14 @@ export class Gitlab extends GitBase implements GitApi {
   async listRepos(): Promise<string[]> {
     const url: string = this.personalOrg ? `${this.getBaseUrl()}/users/${this.username}/projects` : `${this.getBaseUrl()}/groups/${this.owner}/projects`
 
-    return get(url)
-      .set('Private-Token', this.config.password)
-      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
-      .accept('application/json')
+    return this.get(url)
       .then(res => res.body.map(repo => repo.http_url_to_repo)) as Promise<string[]>
   }
 
   async deleteRepo(): Promise<GitApi> {
     // const repoId: string = await this.getRepoId();
 
-    return deleteUrl(this.getRepoUrl())
-      .set('Private-Token', this.config.password)
-      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
-      .accept('application/json')
+    return this.delete(this.getRepoUrl())
       .then(res => {
         const url = this.config.url.replace(new RegExp('(.*)/.*', 'g'), '$1');
 
@@ -393,10 +389,7 @@ export class Gitlab extends GitBase implements GitApi {
   }
 
   async getWebhooks(): Promise<Webhook[]> {
-    return get(this.getRepoUrl() + '/hooks')
-      .set('Private-Token', this.config.password)
-      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
-      .accept('application/json')
+    return this.get(this.getRepoUrl() + '/hooks')
       .then<Webhook[]>(res => {
         console.log('Got hooks', res.body)
         return (res.body as any[])
@@ -405,10 +398,7 @@ export class Gitlab extends GitBase implements GitApi {
   }
 
   async getRepoInfo(): Promise<GitRepo> {
-    return get(this.getRepoUrl())
-      .set('Private-Token', this.config.password)
-      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
-      .accept('application/json')
+    return this.get(this.getRepoUrl())
       .then(res => {
         const gitRepo: GitRepo = {
           id: res.body.id,

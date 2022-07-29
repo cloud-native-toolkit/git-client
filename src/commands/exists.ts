@@ -12,10 +12,12 @@ import {
   repoNameToGitUrl
 } from './support/middleware';
 import {Logger, verboseLoggerFactory} from '../util/logger';
+import {defaultBuilder} from './support/builder';
+import {SSLConfig} from './support/model';
 
 export const command = 'exists [gitUrl]'
 export const desc = 'Checks if a hosted git repo exists';
-export const builder = (yargs: Argv<any>) => yargs
+export const builder = (yargs: Argv<any>) => defaultBuilder(yargs)
   .positional('gitUrl', {
     type: 'string',
     description: 'The git url of the git repository that will be deleted',
@@ -75,7 +77,7 @@ export const handler =  async (argv: Arguments<ExistsArgs & {debug?: boolean, ou
 
   Container.bind(Logger).factory(verboseLoggerFactory(argv.debug))
 
-  const credentials = {username: argv.username, password: argv.token}
+  const credentials = {username: argv.username, password: argv.token, caCert: argv.caCert}
 
   try {
     const repoApi: GitApi = await apiFromUrl(argv.gitUrl, credentials)
@@ -116,7 +118,7 @@ export const handler =  async (argv: Arguments<ExistsArgs & {debug?: boolean, ou
   }
 }
 
-interface ExistsArgs {
+interface ExistsArgs extends SSLConfig {
   gitUrl: string;
   username: string;
   token: string;

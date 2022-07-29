@@ -79,7 +79,7 @@ export class AzureDevops extends GitBase<AzureTypedGitRepoConfig> implements Git
     const orgUrl = `https://${this.host}/${this.owner}`;
 
     const authHandler = getPersonalAccessTokenHandler(this.password);
-    const connection = new WebApi(orgUrl, authHandler);
+    const connection = new WebApi(orgUrl, authHandler, {cert: this.caCert});
 
     return connection.getGitApi(orgUrl);
   }

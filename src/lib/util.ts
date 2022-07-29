@@ -1,5 +1,6 @@
 import * as _ from 'lodash';
 import {get, Response} from 'superagent';
+import {promises} from 'fs';
 
 import {AuthGitRepoConfig, GitHost, GitRepoConfig, InvalidGitUrl, TypedGitRepoConfig} from './git.model';
 import {Github, GithubEnterprise} from './github';
@@ -12,6 +13,8 @@ import {AzureDevops} from './azure-devops';
 import {isDefinedAndNotNull} from '../util/object-util';
 import {Logger} from '../util/logger';
 import {Container} from 'typescript-ioc';
+import {applyCert} from '../util/superagent-support';
+import {loadCaCert} from '../util/ca-cert';
 
 const GIT_URL_PATTERNS = {
   'http': '(https{0,1})://([^/]*)/([^/]*)/{0,1}([^#]*)#{0,1}(.*)',
@@ -50,13 +53,13 @@ const buildAzureGitUrl = (protocol: string, host: string, org: string, project?:
   return `${protocol}://${uri}`
 }
 
-export async function apiFromPartialConfig({host, org, repo, branch, project}: {host: string, org: string, repo?: string, branch?: string, project?: string}, credentials: {username: string, password: string}): Promise<GitApi> {
+export async function apiFromPartialConfig({host, org, repo, branch, project}: {host: string, org: string, repo?: string, branch?: string, project?: string}, credentials: Credentials): Promise<GitApi> {
   const url: string = isAzureDevOps(host) ? buildAzureGitUrl('https', host, org, project, repo) : buildGitUrl('https', host, org, repo)
 
   return apiFromUrl(url, credentials, branch)
 }
 
-export async function apiFromUrl(repoUrl: string, credentials: {username: string, password: string}, branch?: string): Promise<GitApi> {
+export async function apiFromUrl(repoUrl: string, credentials: Credentials, branch?: string): Promise<GitApi> {
   const config: TypedGitRepoConfig = await gitRepoConfigFromUrl(repoUrl, credentials, branch);
 
   return apiFromConfig(config);
@@ -66,8 +69,8 @@ export function apiFromConfig(config: TypedGitRepoConfig): GitApi {
   return new API_FACTORIES[config.type](config);
 }
 
-export async function gitRepoConfigFromUrl(repoUrl: string, credentials: {username: string, password: string}, branch = 'master'): Promise<TypedGitRepoConfig> {
-  const originalConfig: AuthGitRepoConfig = Object.assign({}, parseGitUrl(repoUrl), _.pick(credentials, ['username', 'password']), {branch}) as any;
+export async function gitRepoConfigFromUrl(repoUrl: string, credentials: Credentials, branch = 'master'): Promise<TypedGitRepoConfig> {
+  const originalConfig: AuthGitRepoConfig = Object.assign({}, parseGitUrl(repoUrl), _.pick(credentials, ['username', 'password', 'caCert']), {branch}) as any;
 
   const {type, config} = await getGitRepoType(originalConfig);
 
@@ -147,11 +150,13 @@ async function getGitRepoType(config: AuthGitRepoConfig): Promise<RepoTypeResult
   throw new Error('Unable to identify Git host type: ' + config.url);
 }
 
-async function hasHeader(url: string, header: string, {username, password}: {username: string, password: string}): Promise<boolean> {
+async function hasHeader(url: string, header: string, {username, password, caCert}: Credentials): Promise<boolean> {
   const logger: Logger = Container.get(Logger)
 
+  const cert: {cert: string} | undefined = await loadCaCert(caCert)
+
   try {
-    const response: Response = await get(url).auth(username, password);
+    const response: Response = await applyCert(get(url), cert).auth(username, password);
 
     logger.debug(`Headers for url: ${url}`, {headers: response.headers})
 
@@ -164,11 +169,13 @@ async function hasHeader(url: string, header: string, {username, password}: {use
   }
 }
 
-async function hasBody(url: string, {username, password}: {username: string, password: string}): Promise<boolean> {
+async function hasBody(url: string, {username, password, caCert}: Credentials): Promise<boolean> {
   const logger: Logger = Container.get(Logger)
 
+  const cert: {cert: string} = await loadCaCert(caCert)
+
   try {
-    const response: Response = await get(url).auth(username, password);
+    const response: Response = await applyCert(get(url), cert).auth(username, password);
 
     const result = response.body;
     logger.debug(`Body for url: ${url}`, {body: response.body})
@@ -248,4 +255,10 @@ function parseBranch(branch: string): string | undefined {
   }
 
   return undefined;
+}
+
+export interface Credentials {
+  username: string;
+  password: string;
+  caCert?: {cert: string, certFile: string} | string;
 }

@@ -10,10 +10,12 @@ import {
 import {forAzureDevOpsProject, forCredentials} from './support/checks';
 import {Container} from 'typescript-ioc';
 import {Logger, verboseLoggerFactory} from '../util/logger';
+import {defaultBuilder} from './support/builder';
+import {SSLConfig} from './support/model';
 
 export const command = 'delete [gitUrl]'
 export const desc = 'Deletes a hosted git repo';
-export const builder = (yargs: Argv<any>) => yargs
+export const builder = (yargs: Argv<any>) => defaultBuilder(yargs)
   .positional('gitUrl', {
     type: 'string',
     description: 'The git url of the git repository that will be deleted',
@@ -61,7 +63,7 @@ export const handler =  async (argv: Arguments<DeleteArgs & {debug: boolean}>) =
 
   Container.bind(Logger).factory(verboseLoggerFactory(argv.debug))
 
-  const credentials = {username: argv.username, password: argv.token}
+  const credentials = {username: argv.username, password: argv.token, caCert: argv.caCert}
 
   try {
     const repoApi: GitApi = await apiFromUrl(argv.gitUrl, credentials)
@@ -82,7 +84,7 @@ export const handler =  async (argv: Arguments<DeleteArgs & {debug: boolean}>) =
   }
 }
 
-interface DeleteArgs {
+interface DeleteArgs extends SSLConfig {
   gitUrl: string;
   username: string;
   token: string;

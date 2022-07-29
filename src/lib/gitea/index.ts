@@ -24,7 +24,7 @@ import {
 } from '../git.api';
 import {GitBase} from '../git.base';
 import {BadCredentials, GitRepo, RepoNotFound, TypedGitRepoConfig, Webhook} from '../git.model';
-import {isResponseError} from '../../util/superagent-support';
+import {applyCert, isResponseError} from '../../util/superagent-support';
 
 
 enum GiteaEvent {
@@ -178,29 +178,35 @@ export class Gitea extends GitBase implements GitApi {
   // }
 
   delete(url: string, retryCallback: (err: Error, res: Response) => boolean = defaultRetryCallback): Request {
-    return superagent
+    const req = superagent
       .delete(url)
       .auth(this.username, this.password)
       .set('User-Agent', `${this.username} via ibm-garage-cloud cli`)
       .accept('application/vnd.github.v3+json')
       .retry(10, retryCallback)
+
+    return applyCert(req, this.caCert)
   }
 
   get(url: string, retryCallback: (err: Error, res: Response) => boolean = defaultRetryCallback): Request {
-    return superagent
+    const req = superagent
       .get(url)
       .auth(this.username, this.password)
       .set('User-Agent', `${this.username} via ibm-garage-cloud cli`)
       .accept('application/vnd.github.v3+json')
       .retry(10, retryCallback)
+
+    return applyCert(req, this.caCert)
   }
 
   post(url: string, retryCallback: (err: Error, res: Response) => boolean = defaultRetryCallback): Request {
-    return superagent.post(url)
+    const req = superagent.post(url)
       .auth(this.username, this.password)
       .set('User-Agent', `${this.username} via ibm-garage-cloud cli`)
       .accept('application/vnd.github.v3+json')
       .retry(10, retryCallback)
+
+    return applyCert(req, this.caCert)
   }
 
   async deleteBranch({branch}: DeleteBranchOptions): Promise<string> {

@@ -1,4 +1,4 @@
-import {delete as deleteUrl, get, post, Response} from 'superagent';
+import {delete as deleteUrl, get, post, Request, Response} from 'superagent';
 
 import {
   CreatePullRequestOptions,
@@ -20,7 +20,7 @@ import {
 } from '../git.api';
 import {BadCredentials, GitRepo, RepoNotFound, TypedGitRepoConfig, Webhook} from '../git.model';
 import {GitBase} from '../git.base';
-import {isResponseError} from '../../util/superagent-support';
+import {applyCert, isResponseError} from '../../util/superagent-support';
 
 enum BitbucketHeader {
   event = 'X-Event-Key'
@@ -79,19 +79,40 @@ export class Bitbucket extends GitBase implements GitApi {
     return `${this.getBaseUrl()}/repositories/${this.config.owner}/${this.config.repo}`;
   }
 
-  async deleteBranch({branch}: DeleteBranchOptions): Promise<string> {
-    return deleteUrl(`${this.getRepoUrl()}/refs/branches/${branch}`)
-      .auth(this.config.username, this.config.password)
+  get(url: string) {
+    const req = get(url)
+      .auth(this.username, this.password)
+      .set('User-Agent', `${this.username} via ibm-garage-cloud cli`)
+      .accept('application/json')
+
+    return applyCert(req, this.caCert)
+  }
+
+  post(url: string) {
+    const req = post(url)
+      .auth(this.username, this.password)
+      .set('User-Agent', `${this.username} via ibm-garage-cloud cli`)
+      .accept('application/json')
+
+    return applyCert(req, this.caCert)
+  }
+
+  delete(url: string) {
+    const req = deleteUrl(url)
+      .auth(this.username, this.password)
       .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
       .accept('application/json')
+
+    return applyCert(req, this.caCert)
+  }
+
+  async deleteBranch({branch}: DeleteBranchOptions): Promise<string> {
+    return this.delete(`${this.getRepoUrl()}/refs/branches/${branch}`)
       .then(() => 'success')
   }
 
   async getPullRequest(options: GetPullRequestOptions): Promise<PullRequest> {
-    return get(`${this.getRepoUrl()}/pullrequests/${options.pullNumber}`)
-      .auth(this.config.username, this.config.password)
-      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
-      .accept('application/json')
+    return this.get(`${this.getRepoUrl()}/pullrequests/${options.pullNumber}`)
       .then(res => ({
         pullNumber: res.body.id,
         status: mapPullRequestStatus(res.body.status),
@@ -101,10 +122,7 @@ export class Bitbucket extends GitBase implements GitApi {
   }
 
   async createPullRequest(options: CreatePullRequestOptions): Promise<PullRequest> {
-    return post(`${this.getRepoUrl()}/pullrequests`)
-      .auth(this.config.username, this.config.password)
-      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
-      .accept('application/json')
+    return this.post(`${this.getRepoUrl()}/pullrequests`)
       .send({
         title: options.title,
         source: {
@@ -128,10 +146,7 @@ export class Bitbucket extends GitBase implements GitApi {
 
   async mergePullRequestInternal(options: MergePullRequestOptions): Promise<string> {
 
-    return post(`${this.getRepoUrl()}/pullrequests/${options.pullNumber}/merge`)
-      .auth(this.config.username, this.config.password)
-      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
-      .accept('application/json')
+    return this.post(`${this.getRepoUrl()}/pullrequests/${options.pullNumber}/merge`)
       .send({
         type: 'git',
         close_source_branch: options.delete_branch_after_merge,
@@ -155,10 +170,7 @@ export class Bitbucket extends GitBase implements GitApi {
 
   async getWebhooks(): Promise<Webhook[]> {
 
-    return get(`${this.getRepoUrl()}/hooks`)
-      .auth(this.config.username, this.config.password)
-      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
-      .accept('application/json')
+    return this.get(`${this.getRepoUrl()}/hooks`)
       .then(res => {
         return res.body.values.map(value => ({
           id: value.uuid,
@@ -175,10 +187,7 @@ export class Bitbucket extends GitBase implements GitApi {
   }
 
   async listFiles(): Promise<Array<{ path: string, url?: string }>> {
-    const response: Response = await get(this.getRepoUrl() + '/src?pagelen=100')
-      .auth(this.config.username, this.config.password)
-      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
-      .accept('application/json');
+    const response: Response = await this.get(this.getRepoUrl() + '/src?pagelen=100')
 
     const fileResponse: SrcResponse = response.body;
 
@@ -188,17 +197,14 @@ export class Bitbucket extends GitBase implements GitApi {
   }
 
   async getFileContents(fileDescriptor: { path: string, url?: string }): Promise<string | Buffer> {
-    const response: Response = await get(fileDescriptor.url)
-      .auth(this.config.username, this.config.password)
-      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`);
+    const response: Response = await this.get(fileDescriptor.url)
+      .accept('text/plain')
 
     return response.text;
   }
 
   async getDefaultBranch(): Promise<string> {
-    const response: Response = await get(this.getRepoUrl() + '/branches/default')
-      .auth(this.config.username, this.config.password)
-      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`);
+    const response: Response = await this.get(this.getRepoUrl() + '/branches/default')
 
     const branchResponse: BranchResponse = response.body;
 
@@ -207,10 +213,7 @@ export class Bitbucket extends GitBase implements GitApi {
 
   async createWebhook(options: CreateWebhook): Promise<string> {
     try {
-      const response: Response = await post(this.getRepoUrl() + '/hooks')
-        .auth(this.config.username, this.config.password)
-        .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
-        .accept('application/json')
+      const response: Response = await this.post(this.getRepoUrl() + '/hooks')
         .send(this.buildWebhookData(options));
 
       return response.body.id;
@@ -270,11 +273,8 @@ export class Bitbucket extends GitBase implements GitApi {
     const privateRepo = options.privateRepo || false;
     const autoInit = options.autoInit || true
 
-    const repoApi: Bitbucket = await post(`${this.getBaseUrl()}/repositories/${this.config.owner}/${name}`)
+    const repoApi: Bitbucket = await this.post(`${this.getBaseUrl()}/repositories/${this.config.owner}/${name}`)
       .set('Content-Type', 'application/json')
-      .auth(this.config.username, this.config.password)
-      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
-      .accept('application/json')
       .send({scm: 'git'})
       .then(res => {
         const url = res.body.links.html.href
@@ -301,11 +301,8 @@ export class Bitbucket extends GitBase implements GitApi {
 
     let url = `${this.getBaseUrl()}/repositories/${this.config.owner}`
     while (url) {
-      const {next, repos} = await get(url)
+      const {next, repos} = await this.get(url)
         .set('Content-Type', 'application/json')
-        .auth(this.config.username, this.config.password)
-        .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
-        .accept('application/json')
         .then(res => {
           return {
             next: res.body.next,
@@ -323,20 +320,15 @@ export class Bitbucket extends GitBase implements GitApi {
   async createFile(filename: string, contents: string): Promise<GitApi> {
     const filepath = filename.startsWith('/') ? filename : `/${filename}`
 
-    await post(`${this.getRepoUrl()}/src`)
+    await this.post(`${this.getRepoUrl()}/src`)
       .set('Content-Type', 'multipart/form-data')
-      .auth(this.config.username, this.config.password)
-      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
       .field(filepath, contents)
 
     return this;
   }
 
   deleteRepo(): Promise<GitApi> {
-    return deleteUrl(this.getRepoUrl())
-      .auth(this.config.username, this.config.password)
-      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
-      .accept('application/json')
+    return this.delete(this.getRepoUrl())
       .then(res => {
         const url = this.config.url.replace(new RegExp('(.*)/.*', 'g'), '$1')
 
@@ -352,10 +344,7 @@ export class Bitbucket extends GitBase implements GitApi {
   }
 
   async getRepoInfo(): Promise<GitRepo> {
-    return get(this.getRepoUrl())
-      .auth(this.config.username, this.config.password)
-      .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
-      .accept('application/json')
+    return this.get(this.getRepoUrl())
       .then(res => {
         const gitRepo: GitRepo = {
           id: res.body.id,

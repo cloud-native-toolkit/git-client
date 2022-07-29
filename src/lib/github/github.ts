@@ -30,7 +30,7 @@ import {
   Webhook
 } from '../git.model';
 import {GitBase} from '../git.base';
-import {isResponseError, ResponseError} from '../../util/superagent-support';
+import {applyCert, isResponseError, ResponseError} from '../../util/superagent-support';
 import {timer} from '../timer';
 import {compositeRetryEvaluation, EvaluateErrorForRetry, retryWithDelay} from '../../util/retry-with-delay';
 import {Octokit} from '@octokit/core'
@@ -193,7 +193,12 @@ abstract class GithubCommon extends GitBase implements GitApi {
       })
   }
 
-  async createPullRequest({title, sourceBranch, targetBranch, maintainer_can_modify, draft = false, rateLimit}: CreatePullRequestOptions, retryHandler?: EvaluateErrorForRetry): Promise<PullRequest> {
+  async createPullRequest(options: CreatePullRequestOptions, retryHandler?: EvaluateErrorForRetry): Promise<PullRequest> {
+    const title = options.title;
+    const sourceBranch = options.sourceBranch;
+    const targetBranch = options.targetBranch;
+    const maintainer_can_modify = options.maintainer_can_modify;
+    const draft = options.draft || false;
 
     return this.octokit.request(
       'POST /repos/{owner}/{repo}/pulls',
@@ -300,35 +305,43 @@ abstract class GithubCommon extends GitBase implements GitApi {
   async get(uri: string = ''): Promise<Response> {
     const url: string = uri.startsWith('http') ? uri : this.getRepoUrl() + uri;
 
-    return get(url)
+    const req = get(url)
       .auth(this.config.username, this.config.password)
       .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
       .accept('application/vnd.github.v3+json');
+
+    return applyCert(req, this.caCert)
   }
 
   async delete(uri: string = ''): Promise<Response> {
     const url: string = uri.startsWith('http') ? uri : this.getRepoUrl() + uri;
 
-    return httpDelete(url)
+    const req = httpDelete(url)
       .auth(this.config.username, this.config.password)
       .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
       .accept('application/vnd.github.v3+json');
+
+    return applyCert(req, this.caCert)
   }
 
   async post(uri: string, data: any): Promise<Response> {
-    return post(this.getRepoUrl() + uri)
+    const req = post(this.getRepoUrl() + uri)
       .auth(this.config.username, this.config.password)
       .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
       .accept('application/vnd.github.v3+json')
       .send(data);
+
+    return applyCert(req, this.caCert)
   }
 
   async put(uri: string, data: any = {}): Promise<Response> {
-    return put(this.getRepoUrl() + uri)
+    const req = put(this.getRepoUrl() + uri)
       .auth(this.config.username, this.config.password)
       .set('User-Agent', `${this.config.username} via ibm-garage-cloud cli`)
       .accept('application/vnd.github.v3+json')
       .send(data);
+
+    return applyCert(req, this.caCert)
   }
 
   async createRepo(options: CreateRepoOptions): Promise<GitApi> {

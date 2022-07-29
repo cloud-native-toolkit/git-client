@@ -5,6 +5,7 @@ import {load} from 'js-yaml'
 import {Container} from 'typescript-ioc';
 import first from '../../util/first';
 import {Optional} from 'optional-typescript';
+import {SSLConfig} from './model';
 
 export const loadFromEnv = (name: string, envName: string) => {
   return yargs => {
@@ -32,6 +33,7 @@ interface GitCredential {
   host: string
   username: string
   token: string
+  caCert?: string
 }
 
 interface GitConfig {
@@ -58,7 +60,7 @@ export const loadCredentialsFromFile = () => {
         const credential: Optional<GitCredential> = first((config.credentials || []).filter(config => config.host === yargs.host))
 
         return credential
-          .map(cred => ({username: cred.username, token: cred.token}))
+          .map(cred => ({username: cred.username, token: cred.token, caCert: yargs.caCert || cred.caCert}))
           .valueOr({} as any)
       }
     } catch (err) {
@@ -149,5 +151,15 @@ export const parseHostOrgProjectAndBranchFromUrl = () => {
     }
 
     return {}
+  }
+}
+
+export const caCertAbsolutePath = () => {
+  return yargs => {
+    if (yargs.caCert && ! yargs.caCert.startsWith('/')) {
+      return {
+        caCert: join(process.cwd(), yargs.caCert)
+      }
+    }
   }
 }

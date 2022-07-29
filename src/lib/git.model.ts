@@ -23,6 +23,7 @@ export interface GitRepoConfig {
   branch?: string;
   username?: string;
   password?: string;
+  caCert?: {cert: string, certFile: string};
 }
 
 export interface AuthGitRepoConfig extends GitRepoConfig {

@@ -111,17 +111,24 @@ The exposed APIs are defined in `lib/git.api.ts` in the `GitApi` abstract class.
 - `updatePullRequestBranch()` - updates the pull request with the latest from the target branch
 - `clone()` - clones the repository to the local file system
 
-### Command-line
+### Command-line credentials
 
-The library can also be accessed from the command-line as a series of commands. The cli can either be accessed by installing the module globally or by downloading the appropriate binary for your environment. Currently, two commands are available:
+Credentials can be provided to the command-line for each command using the `-u` and `--token` argument OR the credentials can be stored in a configuration file for each host.
 
-#### create repo
+The configuration file is named `.gitu-config` and should be stored in the home directory. Each entry should contain the `host`, `username` and `token`. Optionally, if the git server uses a self-signed certificate it can also be provided to the configuration with the `caCert` value.
 
-`gitu create [repo] -h host -o org -u username`
+For example:
 
-#### delete repo
-
-`gitu delete repoUrl`
+```yaml
+credentials:
+- host: github.com
+  username: myuser
+  token: token
+- host: git.myhost.com
+  username: githuser
+  token: token
+  caCert: /path/to/ca.crt
+```
 
 ## Testing
 
