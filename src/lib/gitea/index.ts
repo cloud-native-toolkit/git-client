@@ -261,7 +261,7 @@ export class Gitea extends GitBase implements GitApi {
         if (err.response.status === 405) {
           console.log('Merge conflict: ', err)
           throw new MergeConflict(options.pullNumber)
-        } else if (err.response.status === 500 && /Automatic merge failed.*fix conflicts and then commit the result/.test(err.response.body.text)) {
+        } else if (err.response.status === 500 && /Automatic merge failed.*fix conflicts and then commit the result/.test(err.response.body.message)) {
           throw new MergeConflict(options.pullNumber)
         } else {
           throw err
