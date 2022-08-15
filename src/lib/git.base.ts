@@ -1,6 +1,6 @@
 import {promises} from 'fs';
 import {Optional} from 'optional-typescript';
-import simpleGit, {SimpleGit, SimpleGitOptions, StatusResult} from 'simple-git';
+import simpleGit, {BranchSummary, SimpleGit, SimpleGitOptions, StatusResult} from 'simple-git';
 import {Container} from 'typescript-ioc';
 
 import {
@@ -147,6 +147,9 @@ export abstract class GitBase<T extends TypedGitRepoConfig = TypedGitRepoConfig>
     await git.clone(url, repoDir);
 
     await git.cwd({path: repoDir, root: true});
+
+    const branches: BranchSummary = (await git.branch() as any);
+    await git.pull('origin', branches.current);
 
     if (input.userConfig) {
       await git.addConfig('user.email', input.userConfig.email, true, 'local');
