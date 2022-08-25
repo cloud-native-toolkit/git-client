@@ -2,6 +2,21 @@
 
 SDK to interact with different git servers using a consistent api.
 
+
+## CLI installation
+
+To install the latest version of gitu into `/usr/local/bin`, run the following:
+
+```shell
+curl -sL https://gitu.cloudnativetoolkit.dev/install.sh | sh
+```
+
+If you would like to install the CLI in a different directory, use the following:
+
+```shell
+curl -sL https://gitu.cloudnativetoolkit.dev/install.sh | DEST_DIR=~/bin sh
+```
+
 ## Usage
 
 The SDK will determine the type of repo given the url to the server and return a `GitApi` instance that implements the apis for that server. The url can point to a specific repository or to an organization.
