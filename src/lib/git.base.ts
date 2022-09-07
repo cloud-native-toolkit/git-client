@@ -27,6 +27,7 @@ import {isResponseError, ResponseError} from '../util/superagent-support';
 import {Logger} from '../util/logger';
 import {compositeRetryEvaluation, EvaluateErrorForRetry, noRetry, RetryResult} from '../util/retry-with-delay';
 import {minutesInMilliseconds, timeTextToMilliseconds} from '../util/string-util';
+import {loadCaCert} from '../util/ca-cert';
 
 export function isMergeError(error: Error): error is ResponseError {
 
@@ -142,7 +143,13 @@ export abstract class GitBase<T extends TypedGitRepoConfig = TypedGitRepoConfig>
   }
 
   async clone(repoDir: string, input: LocalGitConfig): Promise<SimpleGitWithApi> {
-    const gitOptions: Partial<SimpleGitOptions> = this.buildGitOptions(input);
+    const additionalConfig = {"core.repositoryformatversion": 1}
+
+    if (this.config.caCert?.certFile) {
+      additionalConfig['http.sslVerify'] = false
+    }
+
+    const gitOptions: Partial<SimpleGitOptions> = this.buildGitOptions(input, {config: additionalConfig})
 
     const git: SimpleGit & {gitApi?: GitApi, repoDir?: string} = simpleGit(gitOptions);
 
@@ -324,13 +331,18 @@ export abstract class GitBase<T extends TypedGitRepoConfig = TypedGitRepoConfig>
 
   abstract mergePullRequestInternal(options: MergePullRequestOptions): Promise<string>;
 
-  private buildGitOptions(input: LocalGitConfig): Partial<SimpleGitOptions> {
+  private buildGitOptions(input: LocalGitConfig, additionalInput: {config?: any, userConfig?: any}): Partial<SimpleGitOptions> {
+    const config = Object.assign({}, input.config || {}, additionalInput.config || {})
+    const userConfig = Object.assign({}, input.userConfig || {}, additionalInput.userConfig || {})
+
+    const mergedInput = Object.assign({}, input, {config, userConfig})
+
     return Object
-      .keys(input)
+      .keys(mergedInput)
       .reduce((result: Partial<SimpleGitOptions>, currentKey: keyof LocalGitConfig) => {
 
         if (currentKey === 'config') {
-          result.config = Object.keys(input.config).map(key => `${key}=${input.config[key]}`);
+          result.config = Object.keys(mergedInput.config).map(key => `${key}=${mergedInput.config[key]}`);
         } else if (currentKey !== 'userConfig') {
           result[currentKey] = input[currentKey];
         }

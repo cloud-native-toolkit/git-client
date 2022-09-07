@@ -89,11 +89,7 @@ export const handler =  async (argv: Arguments<CloneArgs & {debug: boolean}>) =>
 
     const location: string = argv.location || repoApi.getConfig().url.replace(new RegExp('.*/(.+)'), '$1')
 
-    const caCert: {cert: string, certFile: string} | undefined = await loadCaCert(argv.caCert)
-    // For now, set SSL verify to false until the cert issues can be resolved
-    const config = caCert ? {'http.sslVerify': false} : {}
-
-    await repoApi.clone(location, {userConfig: {name: argv.configName, email: argv.configEmail}, config})
+    await repoApi.clone(location, {userConfig: {name: argv.configName, email: argv.configEmail}})
 
     console.log(`  Repo cloned into: ${location}`)
   } catch (err) {
