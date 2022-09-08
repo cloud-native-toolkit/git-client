@@ -143,13 +143,12 @@ export abstract class GitBase<T extends TypedGitRepoConfig = TypedGitRepoConfig>
   }
 
   async clone(repoDir: string, input: LocalGitConfig): Promise<SimpleGitWithApi> {
-    const additionalConfig = {"core.repositoryformatversion": 1}
+    const caCertConfig = this.config.caCert?.certFile ? {'http.sslVerify': false} : {}
+    const config = Object.assign({"core.repositoryformatversion": 1}, input.config, caCertConfig)
 
-    if (this.config.caCert?.certFile) {
-      additionalConfig['http.sslVerify'] = false
-    }
+    const gitConfig = {config, userConfig: input.userConfig}
 
-    const gitOptions: Partial<SimpleGitOptions> = this.buildGitOptions(input, {config: additionalConfig})
+    const gitOptions: Partial<SimpleGitOptions> = this.buildGitOptions(gitConfig)
 
     const git: SimpleGit & {gitApi?: GitApi, repoDir?: string} = simpleGit(gitOptions);
 
@@ -162,7 +161,7 @@ export abstract class GitBase<T extends TypedGitRepoConfig = TypedGitRepoConfig>
     const branches: BranchSummary = (await git.branch() as any);
     await git.pull('origin', branches.current);
 
-    await addGitConfig(git, input)
+    await addGitConfig(git, gitConfig)
 
     git.gitApi = this;
     git.repoDir = repoDir;
@@ -331,18 +330,13 @@ export abstract class GitBase<T extends TypedGitRepoConfig = TypedGitRepoConfig>
 
   abstract mergePullRequestInternal(options: MergePullRequestOptions): Promise<string>;
 
-  private buildGitOptions(input: LocalGitConfig, additionalInput: {config?: any, userConfig?: any}): Partial<SimpleGitOptions> {
-    const config = Object.assign({}, input.config || {}, additionalInput.config || {})
-    const userConfig = Object.assign({}, input.userConfig || {}, additionalInput.userConfig || {})
-
-    const mergedInput = Object.assign({}, input, {config, userConfig})
-
+  private buildGitOptions(input: {config?: any, userConfig?: any}): Partial<SimpleGitOptions> {
     return Object
-      .keys(mergedInput)
+      .keys(input)
       .reduce((result: Partial<SimpleGitOptions>, currentKey: keyof LocalGitConfig) => {
 
         if (currentKey === 'config') {
-          result.config = Object.keys(mergedInput.config).map(key => `${key}=${mergedInput.config[key]}`);
+          result.config = Object.keys(input.config).map(key => `${key}=${input.config[key]}`);
         } else if (currentKey !== 'userConfig') {
           result[currentKey] = input[currentKey];
         }
@@ -404,8 +398,9 @@ const getUserConfig = (userConfig?: GitUserConfig): GitUserConfig => {
 }
 
 const SSL_CA_INFO = 'http.sslCAInfo'
+const CORE_REPOSITORY_FORMAT_VERSION = 'core.repositoryformatversion'
 
-const addGitConfig = async (git: SimpleGit, {userConfig, config}: LocalGitConfig) => {
+const addGitConfig = async (git: SimpleGit, {userConfig, config = {}}: LocalGitConfig) => {
 
   if (userConfig) {
     await git.addConfig('user.email', userConfig.email, true, 'local');
@@ -416,4 +411,7 @@ const addGitConfig = async (git: SimpleGit, {userConfig, config}: LocalGitConfig
     await git.addConfig(SSL_CA_INFO, config[SSL_CA_INFO], true, 'local')
   }
 
+  if (Object.keys(config).includes(CORE_REPOSITORY_FORMAT_VERSION)) {
+    await git.addConfig(CORE_REPOSITORY_FORMAT_VERSION, config[CORE_REPOSITORY_FORMAT_VERSION], true, 'local')
+  }
 }
