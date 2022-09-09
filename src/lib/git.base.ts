@@ -144,7 +144,7 @@ export abstract class GitBase<T extends TypedGitRepoConfig = TypedGitRepoConfig>
 
   async clone(repoDir: string, input: LocalGitConfig): Promise<SimpleGitWithApi> {
     const caCertConfig = this.config.caCert?.certFile ? {'http.sslVerify': false} : {}
-    const config = Object.assign({"core.repositoryformatversion": 1}, input.config, caCertConfig)
+    const config = Object.assign({'core.repositoryformatversion': 1, 'core.sparsecheckout': 0}, input.config, caCertConfig)
 
     const gitConfig = {config, userConfig: input.userConfig}
 
@@ -158,10 +158,16 @@ export abstract class GitBase<T extends TypedGitRepoConfig = TypedGitRepoConfig>
 
     await git.cwd({path: repoDir, root: true});
 
+    await addGitConfig(git, gitConfig)
+
     const branches: BranchSummary = (await git.branch() as any);
     await git.pull('origin', branches.current);
 
-    await addGitConfig(git, gitConfig)
+    const status: string = await git.raw('status')
+
+    if (/You are in a sparse checkout/g.test(status)) {
+      this.logger.error('In a sparse checkout!!!')
+    }
 
     git.gitApi = this;
     git.repoDir = repoDir;
