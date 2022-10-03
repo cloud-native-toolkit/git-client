@@ -143,8 +143,11 @@ export abstract class GitBase<T extends TypedGitRepoConfig = TypedGitRepoConfig>
   }
 
   async clone(repoDir: string, input: LocalGitConfig): Promise<SimpleGitWithApi> {
-    const caCertConfig = this.config.caCert?.certFile ? {'http.sslVerify': false} : {}
+    const caCertConfig = getCaCertConfig(this.config.caCert)
+
     const config = Object.assign({'core.repositoryformatversion': 1, 'core.sparsecheckout': 0}, input.config, caCertConfig)
+
+    this.logger.debug('Git config: ', {config})
 
     const gitConfig = {config, userConfig: input.userConfig}
 
@@ -420,4 +423,16 @@ const addGitConfig = async (git: SimpleGit, {userConfig, config = {}}: LocalGitC
   if (Object.keys(config).includes(CORE_REPOSITORY_FORMAT_VERSION)) {
     await git.addConfig(CORE_REPOSITORY_FORMAT_VERSION, config[CORE_REPOSITORY_FORMAT_VERSION], true, 'local')
   }
+}
+
+const getCaCertConfig = (caCert?: string | {cert: string, certFile}): object => {
+  return getCertFile(caCert) ? {'http.sslVerify': false} : {}
+}
+
+const getCertFile = (caCert?: string | {cert: string, certFile: string}): string => {
+  if (typeof caCert === 'string') {
+    return caCert
+  }
+
+  return caCert?.certFile
 }
