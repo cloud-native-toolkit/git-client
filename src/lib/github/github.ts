@@ -436,10 +436,15 @@ abstract class GithubCommon extends GitBase implements GitApi {
         'POST /repos/{owner}/{repo}/hooks',
           Object.assign({}, {owner: this.config.owner, repo: this.config.repo}, this.buildWebhookData(options)) as any
         )
-        .then(res => 'test')
+        .then(res => `Webhook created: ${options.webhookUrl}`)
     } catch (err) {
       if (isResponseError(err)) {
-        if (err.response.text.match(/Hook already exists/)) {
+        const response: any = err.response
+
+        const message = response?.data?.message
+        const errors: string[] = (response?.data?.errors || []).map(err => err.message)
+
+        if (message.match(/Validation Failed/i) && errors.some(msg => msg.match(/Hook already exists/i))) {
           throw new WebhookAlreadyExists('Webhook already exists on repository', err);
         } else {
           throw new UnknownWebhookError('Unknown error creating webhook', err);

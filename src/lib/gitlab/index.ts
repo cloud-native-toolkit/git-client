@@ -272,7 +272,7 @@ export class Gitlab extends GitBase implements GitApi {
           throw error;
         }) as Promise<Response>)
 
-      return response.body.id;
+      return `Webhook created: ${response.body.url}`;
     } catch (err) {
       if (isResponseError(err)) {
         if (err.response.text.match(/Hook already exists/)) {
