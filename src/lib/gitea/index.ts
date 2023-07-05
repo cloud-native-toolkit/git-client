@@ -354,7 +354,8 @@ export class Gitea extends GitBase implements GitApi {
       const response: Response = await this.post(this.getRepoUrl() + '/hooks')
         .send(this.buildWebhookData(options));
 
-      return response.body.id;
+      const url = response.body.config.url
+      return `Webhook created: ${url}`;
     } catch (err) {
       if (isResponseError(err)) {
         if (err.response.text.match(/Hook already exists/)) {
